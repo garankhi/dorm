@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/dorm-api/">
+    <Project Path="dorm-api/Dorm.Api.csproj" />
+  </Folder>
+</Solution>

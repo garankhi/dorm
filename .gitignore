@@ -1,0 +1,20 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+appsettings.Development.json
+
+# .NET build outputs
+bin/
+obj/
+TestResults/
+
+# IDE/editor
+.vs/
+.vscode/
+.idea/
+
+# Supabase CLI local cache
+supabase/.temp/
+
+.agents/*
