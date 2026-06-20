@@ -82,7 +82,20 @@ public class AuthController : ControllerBase
         var user = await _db.AppUsers.FindAsync(id);
         if (user == null) return NotFound();
 
-        return Ok(new { id = user.Id, email = user.Email, fullName = user.FullName, role = user.Role });
+        return Ok(new
+        {
+            id = user.Id,
+            email = user.Email,
+            fullName = user.FullName,
+            role = user.Role,
+            phoneNumber = user.PhoneNumber,
+            studentCode = user.StudentCode,
+            gender = user.Gender,
+            dateOfBirth = user.DateOfBirth,
+            faculty = user.Faculty,
+            className = user.ClassName,
+            address = user.Address
+        });
     }
 
     [HttpPut("me")]
@@ -106,6 +119,19 @@ public class AuthController : ControllerBase
 
         await _db.SaveChangesAsync();
 
-        return Ok(new { id = user.Id, email = user.Email, fullName = user.FullName, role = user.Role });
+        return Ok(new
+        {
+            id = user.Id,
+            email = user.Email,
+            fullName = user.FullName,
+            role = user.Role,
+            phoneNumber = user.PhoneNumber,
+            studentCode = user.StudentCode,
+            gender = user.Gender,
+            dateOfBirth = user.DateOfBirth,
+            faculty = user.Faculty,
+            className = user.ClassName,
+            address = user.Address
+        });
     }
 }
