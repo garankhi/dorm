@@ -1,6 +1,6 @@
 using System;
 
-namespace Dorm.Api.Models
+namespace Dorm.Api.Dtos
 {
     public record CreateDormApplicationRequest(Guid RoomId, string? Reason = null);
 

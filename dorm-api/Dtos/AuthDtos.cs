@@ -1,6 +1,6 @@
 using System;
 
-namespace Dorm.Api.Models
+namespace Dorm.Api.Dtos
 {
     public record RegisterRequest(string Email, string Password, string FullName, string? StudentCode = null);
 
@@ -9,4 +9,6 @@ namespace Dorm.Api.Models
     public record AuthResponse(string Token, Guid Id, string Email, string FullName, string Role);
 
     public record UpdateProfileRequest(string? FullName = null, string? PhoneNumber = null, string? StudentCode = null, string? Faculty = null, string? ClassName = null, string? Address = null, string? Gender = null, DateOnly? DateOfBirth = null);
+
+    public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 }

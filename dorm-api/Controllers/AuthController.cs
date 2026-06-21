@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using BCrypt.Net;
 using Dorm.Api.Data;
 using Dorm.Api.Models;
+using Dorm.Api.Dtos;
 using Dorm.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -135,5 +136,35 @@ public class AuthController : ControllerBase
             className = user.ClassName,
             address = user.Address
         });
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest req)
+    {
+        var sub = User.Claims.FirstOrDefault(c => c.Type == System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
+                  ?? User.Claims.FirstOrDefault(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(sub, out var id)) return Unauthorized();
+
+        var user = await _db.AppUsers.FindAsync(id);
+        if (user == null) return NotFound();
+
+        bool ok;
+        try
+        {
+            ok = BCrypt.Net.BCrypt.Verify(req.CurrentPassword, user.PasswordHash);
+        }
+        catch (BCrypt.Net.SaltParseException)
+        {
+            ok = false;
+        }
+
+        if (!ok) return BadRequest(new { error = "invalid_current_password" });
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new { success = true });
     }
 }
