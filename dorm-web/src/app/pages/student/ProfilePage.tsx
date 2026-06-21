@@ -99,28 +99,58 @@ export default function ProfilePage() {
             { label: "Email", key: "email", type: "email", placeholder: "email@example.com", disabled: true, fullWidth: true },
             { label: "Số điện thoại", key: "phone", type: "tel", placeholder: "0912 345 678" },
             { label: "MSSV", key: "studentId", type: "text", placeholder: "Mã số sinh viên", disabled: true },
-            { label: "Giới tính", key: "gender", type: "text", placeholder: "Nam / Nữ / Khác" },
+            {
+              label: "Giới tính",
+              key: "gender",
+              type: "select",
+              options: [
+                { value: "male", label: "Nam" },
+                { value: "female", label: "Nữ" },
+                { value: "other", label: "Khác" }
+              ]
+            },
             { label: "Ngày sinh", key: "dateOfBirth", type: "date", placeholder: "yyyy-mm-dd" },
             { label: "Khoa/Ngành", key: "faculty", type: "text", placeholder: "Công nghệ thông tin" },
             { label: "Lớp học", key: "className", type: "text", placeholder: "IT01" },
             { label: "Địa chỉ", key: "address", type: "text", placeholder: "Hà Nội", fullWidth: true },
-          ].map(({ label, key, type, placeholder, disabled, fullWidth }) => (
+          ].map(({ label, key, type, placeholder, disabled, fullWidth, options }) => (
             <div key={key} className={fullWidth ? "sm:col-span-2" : ""}>
               <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
                 {label}
               </label>
               {editing ? (
-                <input
-                  type={type}
-                  value={form[key as keyof typeof form] || ""}
-                  onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  placeholder={placeholder}
-                  disabled={disabled || loading}
-                  className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition disabled:opacity-60 disabled:cursor-not-allowed"
-                />
+                type === "select" ? (
+                  <select
+                    value={form[key as keyof typeof form] || ""}
+                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    disabled={disabled || loading}
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition disabled:opacity-60 disabled:cursor-not-allowed text-ellipsis"
+                  >
+                    <option value="">-- Chọn giới tính --</option>
+                    {options?.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={type}
+                    value={form[key as keyof typeof form] || ""}
+                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    placeholder={placeholder}
+                    disabled={disabled || loading}
+                    className="w-full px-3.5 py-2.5 rounded-lg border border-border bg-input-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                )
               ) : (
                 <p className="text-sm text-foreground py-2">
-                  {form[key as keyof typeof form] || <span className="text-muted-foreground italic">Chưa cập nhật</span>}
+                  {key === "gender" ? (
+                    form.gender === "male" ? "Nam" :
+                    form.gender === "female" ? "Nữ" :
+                    form.gender === "other" ? "Khác" :
+                    <span className="text-muted-foreground italic">Chưa cập nhật</span>
+                  ) : (
+                    form[key as keyof typeof form] || <span className="text-muted-foreground italic">Chưa cập nhật</span>
+                  )}
                 </p>
               )}
             </div>

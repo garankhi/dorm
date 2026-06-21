@@ -132,14 +132,6 @@ export default function LoginPage() {
               Đăng ký ngay
             </Link>
           </p>
-
-          <div className="mt-8 pt-6 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-2 font-medium">Tài khoản thử nghiệm:</p>
-            <div className="space-y-1 text-xs text-muted-foreground">
-              <p>Sinh viên: <span className="font-mono text-foreground">an.nguyen@student.edu.vn</span> / <span className="font-mono text-foreground">123456</span></p>
-              <p>Admin: <span className="font-mono text-foreground">admin@ktx.edu.vn</span> / <span className="font-mono text-foreground">admin123</span></p>
-            </div>
-          </div>
         </div>
       </div>
     </div>
