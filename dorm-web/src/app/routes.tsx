@@ -15,21 +15,21 @@ import AdminRoomsPage from "./pages/admin/AdminRoomsPage";
 
 function RequireStudent({ children }: { children: React.ReactNode }) {
   const user = getCurrentUser();
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/student" replace />;
   if (user.role === "admin") return <Navigate to="/admin" replace />;
   return <>{children}</>;
 }
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const user = getCurrentUser();
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/student" replace />;
   if (user.role === "student") return <Navigate to="/student" replace />;
   return <>{children}</>;
 }
 
 function RootRedirect() {
   const user = getCurrentUser();
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/student" replace />;
   if (user.role === "admin") return <Navigate to="/admin" replace />;
   return <Navigate to="/student" replace />;
 }

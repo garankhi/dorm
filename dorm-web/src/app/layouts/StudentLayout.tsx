@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { to: "/student", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/student", label: "Tổng quan", icon: LayoutDashboard, end: true },
   { to: "/student/profile", label: "Hồ sơ", icon: User, end: false },
   { to: "/student/rooms", label: "Lưu trú", icon: BedDouble, end: false },
   { to: "/student/applications", label: "Đăng ký KTX", icon: ClipboardList, end: false },

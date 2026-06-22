@@ -71,7 +71,7 @@ export default function RoomsPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#e8ebff] flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-[#fff8e8] flex items-center justify-center">
                       <BedDouble size={15} className="text-primary" />
                     </div>
                     <div>
