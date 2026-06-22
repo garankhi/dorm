@@ -3,12 +3,12 @@ import { CheckCircle2, ClipboardList, Clock, Eye, Search, XCircle } from "lucide
 import AdminModal from "./AdminModal";
 import AdminPagination from "./AdminPagination";
 import {
-  type AdminApplication,
   type ApplicationStatus,
   applicationStatusConfig,
   applicationStatusOptions,
-  initialApplications,
 } from "./adminApplicationsData";
+import { AdminApplication, approveApplication, fetchAdminApplication, rejectApplication } from "./adminApplicationApi";
+import { formatDate } from "../../libs/format";
 
 const PAGE_SIZE = 5;
 
@@ -24,7 +24,10 @@ function StatusBadge({ status }: { status: ApplicationStatus }) {
 }
 
 export default function AdminApplicationsPage() {
-  const [applications, setApplications] = useState(initialApplications);
+  const [applications, setApplications] = useState<AdminApplication[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
   const [buildingFilter, setBuildingFilter] = useState("all");
@@ -32,6 +35,28 @@ export default function AdminApplicationsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewError, setReviewError] = useState("");
+
+  const loadApplications = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await fetchAdminApplication({
+        page: currentPage,
+        pageSize: PAGE_SIZE,
+        status: statusFilter,
+        building: buildingFilter,
+        q: search
+      });
+
+      setApplications(data.items);
+      setTotal(data.total);
+    } catch (err: any) {
+      setError(err?.message || "Không thể tải danh sách đơn");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const buildings = useMemo(
     () => Array.from(new Set(applications.map((application) => application.building))).sort(),
@@ -72,9 +97,9 @@ export default function AdminApplicationsPage() {
     });
   }, [applications, buildingFilter, search, statusFilter]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredApplications.length / PAGE_SIZE));
-  const pageStartIndex = (currentPage - 1) * PAGE_SIZE;
-  const pageEndIndex = Math.min(pageStartIndex + PAGE_SIZE, filteredApplications.length);
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const pageStartIndex = total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const pageEndIndex = Math.min(currentPage * PAGE_SIZE, total);
   const paginatedApplications = filteredApplications.slice(pageStartIndex, pageEndIndex);
   const detailApplication = applications.find((application) => application.id === detailId) ?? null;
 
@@ -85,6 +110,10 @@ export default function AdminApplicationsPage() {
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, pageCount));
   }, [pageCount]);
+
+  useEffect(() => {
+    loadApplications();
+  }, [currentPage, statusFilter, search, buildingFilter]);
 
   const openDetails = (id: string) => {
     setDetailId(id);
@@ -103,28 +132,34 @@ export default function AdminApplicationsPage() {
       current.map((application) =>
         application.id === id
           ? {
-              ...application,
-              status,
-              adminNote: note?.trim() || application.adminNote,
-            }
+            ...application,
+            status,
+            adminNote: note?.trim() || application.adminNote,
+          }
           : application,
       ),
     );
     closeDetails();
   };
 
-  const handleApprove = (application: AdminApplication) => {
+  const handleApprove = async (application: AdminApplication) => {
     if (application.status !== "pending") return;
-    updateApplicationStatus(application.id, "approved", reviewNote);
+
+    await approveApplication(application.id, reviewNote);
+    closeDetails();
+    await loadApplications();
   };
 
-  const handleReject = (application: AdminApplication) => {
+  const handleReject = async (application: AdminApplication) => {
     if (application.status !== "pending") return;
     if (!reviewNote.trim()) {
       setReviewError("Vui lòng nhập lý do từ chối.");
       return;
     }
-    updateApplicationStatus(application.id, "rejected", reviewNote);
+
+    await rejectApplication(application.id, reviewNote);
+    closeDetails();
+    await loadApplications();
   };
 
   const statItems = [
@@ -194,6 +229,18 @@ export default function AdminApplicationsPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-xl border border-border bg-white py-10 text-center text-sm text-muted-foreground">
+          Đang tải danh sách đơn...
+        </div>
+      )}
+
       <section className="min-w-0">
         <div className="hidden overflow-hidden rounded-xl border border-border bg-white md:block">
           <div className="overflow-x-auto">
@@ -221,7 +268,7 @@ export default function AdminApplicationsPage() {
                       <p className="text-xs text-muted-foreground">{application.studentCode} · {application.email}</p>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{application.building} · Phòng {application.room}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{application.submittedAt}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatDate(application.submittedAt)}</td>
                     <td className="px-4 py-3"><StatusBadge status={application.status} /></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
@@ -284,7 +331,7 @@ export default function AdminApplicationsPage() {
                 </div>
                 <div className="mt-3 grid gap-1 text-xs text-muted-foreground">
                   <span>{application.building} · Phòng {application.room}</span>
-                  <span>Ngày nộp: {application.submittedAt}</span>
+                  <span>Ngày nộp: {formatDate(application.submittedAt)}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                   <button onClick={() => openDetails(application.id)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground">Xem</button>
@@ -326,7 +373,7 @@ export default function AdminApplicationsPage() {
           <div className="space-y-4 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <StatusBadge status={detailApplication.status} />
-              <span className="text-xs text-muted-foreground">Ngày nộp: {detailApplication.submittedAt}</span>
+              <span className="text-xs text-muted-foreground">Ngày nộp: {formatDate(detailApplication.submittedAt)}</span>
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sinh viên</p>
