@@ -6,7 +6,7 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? ["http://localhost:3000"];
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new[] { "http://localhost:3000" };
 var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is not configured.");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("Jwt:Issuer is not configured.");
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
@@ -36,7 +36,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtAudience,
 
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(jwtKey)),
 
             ValidateLifetime = true,
             ClockSkew = TimeSpan.FromMinutes(2)
@@ -50,6 +50,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RequireStudent", policy => 
     policy.RequireRole("student"));
 });
+builder.Services.AddScoped<Dorm.Api.Services.ITokenService, Dorm.Api.Services.TokenService>();
 builder.Services.AddOpenApi();
 var app = builder.Build();
 
@@ -58,6 +59,9 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+// Run seed data to ensure demo users exist (safe no-op if already present)
+// Note: runtime seeding removed. Use migrations or manual DB scripts for production data.
 
 app.UseHttpsRedirection();
 
