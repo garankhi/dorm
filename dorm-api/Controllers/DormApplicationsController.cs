@@ -133,4 +133,33 @@ public class DormApplicationsController : ControllerBase
 
         return Ok(apps);
     }
+
+    //DELETE api/DormApplications/{id}
+    [HttpDelete("{id}")]
+[Authorize]
+public async Task<IActionResult> DeleteApplication(Guid id)
+{
+    var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+              ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+    if (!Guid.TryParse(sub, out var studentId))
+        return Unauthorized();
+
+    var application = await _db.DormApplications
+        .FirstOrDefaultAsync(x => x.Id == id && x.StudentId == studentId);
+
+    if (application == null)
+    return NotFound(new { error = "application_not_found" });
+
+if (application.StudentId != studentId)
+    return Forbid();
+
+    if (application.Status != "pending")
+        return BadRequest(new { error = "cannot_delete_non_pending_application" });
+
+    _db.DormApplications.Remove(application);
+    await _db.SaveChangesAsync();
+
+    return NoContent();
+}
 }

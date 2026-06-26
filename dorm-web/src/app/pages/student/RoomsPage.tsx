@@ -23,6 +23,7 @@ export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
+  const [activeApp, setActiveApp] = useState<any | null>(null);
 
   const loadRooms = async () => {
     try {
@@ -34,13 +35,25 @@ export default function RoomsPage() {
   };
 
   const loadApplications = async () => {
-    try {
-      const res = await api.get("/DormApplications/me");
-      setApplications(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const res = await api.get("/DormApplications/me");
+
+  const mapped = res.data.map((x: any) => ({
+    id: x.id,
+    roomId: x.roomId,
+    room: `${x.buildingName} - ${x.roomNumber}`,
+    status: x.status,
+    submittedAt: x.submittedAt,
+    note: x.reason,
+  }));
+
+  setApplications(mapped);
+
+  const active = mapped.find(
+    (x: any) => x.status === "pending"
+  );
+
+  setActiveApp(active || null);
+};
 
   useEffect(() => {
     loadRooms();
@@ -58,17 +71,31 @@ export default function RoomsPage() {
   });
 
   const registerRoom = async (roomId: string) => {
-    try {
-      await api.post("/DormApplications", {
-        roomId,
-      });
-
-      setApplied(roomId);
-      loadRooms();
-    } catch (err: any) {
-      alert(err.response?.data?.error ?? "Đăng ký thất bại");
+  try {
+    // nếu đã có đơn khác
+    if (activeApp && activeApp.roomId !== roomId) {
+      alert("Bạn đang có đơn đăng ký phòng khác. Vui lòng hủy đơn trước!");
+      return;
     }
-  };
+
+    await api.post("/DormApplications", { roomId });
+
+    loadApplications();
+    loadRooms();
+  } catch (err: any) {
+    alert(err.response?.data?.error ?? "Đăng ký thất bại");
+  }
+};
+
+const cancelApplication = async (id: string) => {
+  try {
+    await api.delete(`/DormApplications/${id}`);
+    loadApplications();
+    loadRooms();
+  } catch (err) {
+    alert("Hủy đơn thất bại");
+  }
+};
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto">
@@ -115,8 +142,10 @@ export default function RoomsPage() {
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {filtered.map((room) => {
-          const isApplied = appliedRoomIds.has(room.id);
-          const full = room.available === 0 || isApplied;
+          const isMyRoom = activeApp?.roomId === room.id;
+const hasActiveApplication = !!activeApp;
+const isApplied = applications.some((a) => a.roomId === room.id);
+const full = room.available === 0;
           return (
             <div
               key={room.id}
@@ -170,19 +199,32 @@ export default function RoomsPage() {
                     /tháng
                   </span>
                 </p>
-                {isApplied ? (
-                  <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                    <CheckCircle2 size={13} /> Đã nộp đơn
-                  </span>
-                ) : (
-                  <button
-                    disabled={full}
-                    onClick={() => registerRoom(room.id)}
-                    className="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isApplied ? "Đã đăng ký" : full ? "Hết chỗ" : "Đăng ký"}
-                  </button>
-                )}
+                {isMyRoom ? (
+  <div className="flex items-center gap-2">
+    <span className="text-green-600 text-xs font-medium">
+      Đang đăng ký
+    </span>
+
+    <button
+      onClick={() => activeApp && cancelApplication(activeApp.id)}
+      className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:opacity-90"
+    >
+      Hủy
+    </button>
+  </div>
+) : isApplied ? (
+  <span className="text-gray-500 text-xs">
+    Đã đăng ký phòng khác
+  </span>
+) : (
+  <button
+    disabled={full && !hasActiveApplication}
+    onClick={() => registerRoom(room.id)}
+    className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg disabled:opacity-40"
+  >
+    {full ? "Hết chỗ" : "Đăng ký"}
+  </button>
+)}
               </div>
             </div>
           );
