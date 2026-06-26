@@ -1,28 +1,61 @@
-import { useState } from "react";
 import { BedDouble, Users, CheckCircle2, Search } from "lucide-react";
-
-const rooms = [
-  { id: "P101A", name: "Phòng 101A", building: "Nhà A", capacity: 6, available: 2, type: "Nam", floor: "Tầng 1", price: 350000 },
-  { id: "P101B", name: "Phòng 101B", building: "Nhà A", capacity: 6, available: 0, type: "Nữ", floor: "Tầng 1", price: 350000 },
-  { id: "P204A", name: "Phòng 204A", building: "Nhà A", capacity: 4, available: 1, type: "Nam", floor: "Tầng 2", price: 450000 },
-  { id: "P204B", name: "Phòng 204B", building: "Nhà A", capacity: 4, available: 3, type: "Nữ", floor: "Tầng 2", price: 450000 },
-  { id: "P305C", name: "Phòng 305C", building: "Nhà B", capacity: 4, available: 2, type: "Nam", floor: "Tầng 3", price: 500000 },
-  { id: "P306D", name: "Phòng 306D", building: "Nhà B", capacity: 2, available: 1, type: "Nữ", floor: "Tầng 3", price: 650000 },
-  { id: "P401A", name: "Phòng 401A", building: "Nhà C", capacity: 4, available: 4, type: "Nam", floor: "Tầng 4", price: 480000 },
-  { id: "P402B", name: "Phòng 402B", building: "Nhà C", capacity: 6, available: 0, type: "Nữ", floor: "Tầng 4", price: 380000 },
-];
+import { useEffect, useState } from "react";
+import api from "../../api/dorm";
 
 export default function RoomsPage() {
+  interface Room {
+  id: string;
+  buildingName: string;
+  roomNumber: string;
+  floor: number;
+  roomType: string;
+  capacity: number;
+  currentOccupancy: number;
+  available: number;
+  pricePerMonth: number;
+  status: string;
+  description?: string;
+}
+  
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "available">("all");
   const [applied, setApplied] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = rooms.filter((r) => {
-    const matchSearch = r.name.toLowerCase().includes(search.toLowerCase()) || r.building.toLowerCase().includes(search.toLowerCase());
+    useEffect(() => {
+  loadRooms();
+}, []);
+
+const loadRooms = async () => {
+  try {
+    const res = await api.get("/DormApplications/rooms");
+    setRooms(res.data);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const filtered = rooms.filter((r) => {
+    const matchSearch = r.roomNumber.toLowerCase().includes(search.toLowerCase()) || r.buildingName.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === "all" || r.available > 0;
     return matchSearch && matchFilter;
   });
 
+  const registerRoom = async (roomId: string) => {
+  try {
+    await api.post("/DormApplications", {
+      roomId,
+    });
+
+    setApplied(roomId);
+
+    loadRooms();
+    } catch (err: any) {
+    alert(err.response?.data?.error ?? "Đăng ký thất bại");
+  }
+};
+  
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto">
       <div className="mb-6">
@@ -75,15 +108,15 @@ export default function RoomsPage() {
                       <BedDouble size={15} className="text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-foreground">{room.name}</p>
-                      <p className="text-xs text-muted-foreground">{room.building} · {room.floor}</p>
+                      <p className="text-sm font-semibold text-foreground">{room.roomNumber}</p>
+                      <p className="text-xs text-muted-foreground">{room.buildingName} · {room.floor}</p>
                     </div>
                   </div>
                 </div>
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                  room.type === "Nam" ? "bg-blue-50 text-blue-600" : "bg-pink-50 text-pink-600"
+                  room.roomType === "Nam" ? "bg-blue-50 text-blue-600" : "bg-pink-50 text-pink-600"
                 }`}>
-                  {room.type}
+                  {room.roomType}
                 </span>
               </div>
 
@@ -99,7 +132,7 @@ export default function RoomsPage() {
 
               <div className="flex items-center justify-between pt-1 border-t border-border">
                 <p className="text-sm font-semibold text-foreground">
-                  {room.price.toLocaleString("vi-VN")}₫<span className="text-xs font-normal text-muted-foreground">/tháng</span>
+                  {room.pricePerMonth.toLocaleString("vi-VN")}₫<span className="text-xs font-normal text-muted-foreground">/tháng</span>
                 </p>
                 {isApplied ? (
                   <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
@@ -108,7 +141,7 @@ export default function RoomsPage() {
                 ) : (
                   <button
                     disabled={full}
-                    onClick={() => setApplied(room.id)}
+                    onClick={() => registerRoom(room.id)}
                     className="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Đăng ký

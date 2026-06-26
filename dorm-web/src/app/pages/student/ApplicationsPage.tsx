@@ -1,28 +1,14 @@
 import { ClipboardList, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import api from "../../api/dorm";
 
-const applications = [
-  {
-    id: "DK-2024-001",
-    room: "Phòng 204A — Nhà A",
-    submittedAt: "12/03/2024",
-    status: "approved" as const,
-    note: "Đã được xét duyệt bởi BQL",
-  },
-  {
-    id: "DK-2024-002",
-    room: "Phòng 101B — Nhà A",
-    submittedAt: "28/05/2024",
-    status: "pending" as const,
-    note: "Đang chờ xét duyệt",
-  },
-  {
-    id: "DK-2023-018",
-    room: "Phòng 306D — Nhà B",
-    submittedAt: "05/08/2023",
-    status: "rejected" as const,
-    note: "Phòng đã hết chỗ tại thời điểm xét",
-  },
-];
+interface Application {
+  id: string;
+  room: string;
+  submittedAt: string;
+  note: string;
+  status: "pending" | "approved" | "rejected";
+}
 
 const statusConfig = {
   pending: {
@@ -46,6 +32,18 @@ const statusConfig = {
 };
 
 export default function ApplicationsPage() {
+
+  const [applications, setApplications] = useState<Application[]>([]);
+
+const loadApplications = async () => {
+  try {
+    const res = await api.get("/DormApplications");
+    setApplications(res.data);
+  } catch (error) {
+    console.error("Error loading applications:", error);
+  }
+};
+
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
       <div className="mb-6">
