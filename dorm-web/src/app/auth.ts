@@ -107,21 +107,13 @@ export async function register(name: string, email: string, password: string): P
   return user;
 }
 
-// export function getCurrentUser(): User | null {
-//   try {
-//     const raw = localStorage.getItem(STORAGE_KEY);
-//     return raw ? JSON.parse(raw) : null;
-//   } catch {
-//     return null;
-//   }
-// }
-
-export function getCurrentUser() {
-  return {
-    id: "test-id",
-    name: "Han Pham - Test",
-    role: "student"
-  };
+export function getCurrentUser(): User | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function updateCurrentUser(updates: Partial<User>): Promise<User> {
