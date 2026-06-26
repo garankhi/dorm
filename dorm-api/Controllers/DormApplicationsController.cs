@@ -67,7 +67,7 @@ public class DormApplicationsController : ControllerBase
 
         var existed = await _db.DormApplications.AnyAsync(x =>
             x.StudentId == studentId &&
-            (x.Status == "PENDING" || x.Status == "APPROVED"));
+            (x.Status == "pending" || x.Status == "approved"));
 
         if (existed)
             return Conflict(new { error = "application_exists" });
@@ -78,7 +78,7 @@ public class DormApplicationsController : ControllerBase
             StudentId = studentId,
             RoomId = req.RoomId,
             Reason = req.Reason,
-            Status = "PENDING",
+            Status = "pending",
             SubmittedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow

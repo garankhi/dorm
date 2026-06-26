@@ -32,23 +32,37 @@ const statusConfig = {
 };
 
 export default function ApplicationsPage() {
-
   const [applications, setApplications] = useState<Application[]>([]);
 
-const loadApplications = async () => {
-  try {
-    const res = await api.get("/DormApplications");
-    setApplications(res.data);
-  } catch (error) {
-    console.error("Error loading applications:", error);
-  }
-};
+  const loadApplications = async () => {
+    try {
+      const res = await api.get("/DormApplications/me");
+
+      const mapped = res.data.map((x: any) => ({
+        id: x.id,
+        room: `${x.buildingName} - ${x.roomNumber}`,
+        submittedAt: new Date(x.submittedAt).toLocaleString("vi-VN"),
+        note: x.reason,
+        status: x.status,
+      }));
+
+      setApplications(mapped);
+    } catch (error) {
+      console.error("Error loading applications:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadApplications();
+  }, []);
 
   return (
     <div className="p-6 md:p-8 max-w-2xl mx-auto">
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-foreground">Đăng ký KTX</h1>
-        <p className="text-sm text-muted-foreground mt-1">Danh sách các đơn đăng ký ký túc xá của bạn.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Danh sách các đơn đăng ký ký túc xá của bạn.
+        </p>
       </div>
 
       {applications.length === 0 ? (
@@ -59,7 +73,9 @@ const loadApplications = async () => {
       ) : (
         <div className="space-y-3">
           {applications.map((app) => {
-            const { label, icon: Icon, className, dot } = statusConfig[app.status];
+            const { label, icon: Icon, className, dot } =
+              statusConfig[app.status];
+
             return (
               <div
                 key={app.id}
@@ -69,11 +85,18 @@ const loadApplications = async () => {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <div className={`w-2 h-2 rounded-full ${dot}`} />
-                      <p className="text-sm font-semibold text-foreground">{app.room}</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        {app.room}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">Mã đơn: {app.id}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Mã đơn: {app.id}
+                    </p>
                   </div>
-                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${className} whitespace-nowrap shrink-0`}>
+
+                  <span
+                    className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${className}`}
+                  >
                     <Icon size={11} />
                     {label}
                   </span>
