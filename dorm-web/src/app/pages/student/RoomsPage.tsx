@@ -1,6 +1,18 @@
 import { BedDouble, Users, CheckCircle2, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "../../api/dorm";
+import { toast } from "sonner";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 
 export default function RoomsPage() {
   interface Room {
@@ -24,6 +36,8 @@ export default function RoomsPage() {
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
   const [activeApp, setActiveApp] = useState<any | null>(null);
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [registerRoomId, setRegisterRoomId] = useState<string | null>(null);
 
   const loadRooms = async () => {
     try {
@@ -35,25 +49,23 @@ export default function RoomsPage() {
   };
 
   const loadApplications = async () => {
-  const res = await api.get("/DormApplications/me");
+    const res = await api.get("/DormApplications/me");
 
-  const mapped = res.data.map((x: any) => ({
-    id: x.id,
-    roomId: x.roomId,
-    room: `${x.buildingName} - ${x.roomNumber}`,
-    status: x.status,
-    submittedAt: x.submittedAt,
-    note: x.reason,
-  }));
+    const mapped = res.data.map((x: any) => ({
+      id: x.id,
+      roomId: x.roomId,
+      room: `${x.buildingName} - ${x.roomNumber}`,
+      status: x.status,
+      submittedAt: x.submittedAt,
+      note: x.reason,
+    }));
 
-  setApplications(mapped);
+    setApplications(mapped);
 
-  const active = mapped.find(
-    (x: any) => x.status === "pending"
-  );
+    const active = mapped.find((x: any) => x.status === "pending");
 
-  setActiveApp(active || null);
-};
+    setActiveApp(active || null);
+  };
 
   useEffect(() => {
     loadRooms();
@@ -71,31 +83,66 @@ export default function RoomsPage() {
   });
 
   const registerRoom = async (roomId: string) => {
-  try {
-    // nếu đã có đơn khác
-    if (activeApp && activeApp.roomId !== roomId) {
-      alert("Bạn đang có đơn đăng ký phòng khác. Vui lòng hủy đơn trước!");
-      return;
+    try {
+      if (activeApp && activeApp.roomId !== roomId) {
+        toast.error(
+          "Bạn đang có đơn đăng ký phòng khác. Vui lòng hủy đơn trước.",
+        );
+        return;
+      }
+
+      await api.post("/DormApplications", {
+        roomId,
+      });
+
+      // cập nhật UI ngay
+      setRooms((prev) =>
+        prev.map((r) =>
+          r.id === roomId
+            ? {
+                ...r,
+                currentOccupancy: r.currentOccupancy + 1,
+                available: Math.max(0, r.available - 1),
+              }
+            : r,
+        ),
+      );
+
+      await loadApplications();
+
+      toast.success("Đăng ký phòng thành công!");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error ?? "Đăng ký thất bại");
     }
+  };
 
-    await api.post("/DormApplications", { roomId });
+  const cancelApplication = async (id: string) => {
+    try {
+      const roomId = activeApp?.roomId;
 
-    loadApplications();
-    loadRooms();
-  } catch (err: any) {
-    alert(err.response?.data?.error ?? "Đăng ký thất bại");
-  }
-};
+      await api.delete(`/DormApplications/${id}`);
 
-const cancelApplication = async (id: string) => {
-  try {
-    await api.delete(`/DormApplications/${id}`);
-    loadApplications();
-    loadRooms();
-  } catch (err) {
-    alert("Hủy đơn thất bại");
-  }
-};
+      if (roomId) {
+        setRooms((prev) =>
+          prev.map((r) =>
+            r.id === roomId
+              ? {
+                  ...r,
+                  currentOccupancy: Math.max(0, r.currentOccupancy - 1),
+                  available: r.available + 1,
+                }
+              : r,
+          ),
+        );
+      }
+
+      await loadApplications();
+
+      toast.success("Đã hủy đơn đăng ký");
+    } catch {
+      toast.error("Hủy đơn thất bại");
+    }
+  };
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto">
@@ -143,9 +190,9 @@ const cancelApplication = async (id: string) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {filtered.map((room) => {
           const isMyRoom = activeApp?.roomId === room.id;
-const hasActiveApplication = !!activeApp;
-const isApplied = applications.some((a) => a.roomId === room.id);
-const full = room.available === 0;
+          const hasActiveApplication = !!activeApp;
+          const isApplied = applications.some((a) => a.roomId === room.id);
+          const full = room.available === 0;
           return (
             <div
               key={room.id}
@@ -200,31 +247,31 @@ const full = room.available === 0;
                   </span>
                 </p>
                 {isMyRoom ? (
-  <div className="flex items-center gap-2">
-    <span className="text-green-600 text-xs font-medium">
-      Đang đăng ký
-    </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 text-xs font-medium">
+                      Đang đăng ký
+                    </span>
 
-    <button
-      onClick={() => activeApp && cancelApplication(activeApp.id)}
-      className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:opacity-90"
-    >
-      Hủy
-    </button>
-  </div>
-) : isApplied ? (
-  <span className="text-gray-500 text-xs">
-    Đã đăng ký phòng khác
-  </span>
-) : (
-  <button
-    disabled={full && !hasActiveApplication}
-    onClick={() => registerRoom(room.id)}
-    className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg disabled:opacity-40"
-  >
-    {full ? "Hết chỗ" : "Đăng ký"}
-  </button>
-)}
+                    <button
+                      onClick={() => setCancelId(activeApp.id)}
+                      className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:opacity-90"
+                    >
+                      Hủy
+                    </button>
+                  </div>
+                ) : isApplied ? (
+                  <span className="text-gray-500 text-xs">
+                    Đã đăng ký phòng khác
+                  </span>
+                ) : (
+                  <button
+                    disabled={full && !hasActiveApplication}
+                    onClick={() => setRegisterRoomId(room.id)}
+                    className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg disabled:opacity-40"
+                  >
+                    {full ? "Hết chỗ" : "Đăng ký"}
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -237,6 +284,64 @@ const full = room.available === 0;
           <p className="text-sm">Không tìm thấy phòng phù hợp.</p>
         </div>
       )}
+
+      <AlertDialog
+        open={!!registerRoomId}
+        onOpenChange={() => setRegisterRoomId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Xác nhận đăng ký</AlertDialogTitle>
+
+            <AlertDialogDescription>
+              Bạn có chắc chắn muốn đăng ký phòng này không?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+
+            <AlertDialogAction
+              onClick={() => {
+                if (registerRoomId) {
+                  registerRoom(registerRoomId);
+                  setRegisterRoomId(null);
+                }
+              }}
+            >
+              Đăng ký
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!cancelId} onOpenChange={() => setCancelId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hủy đơn đăng ký?</AlertDialogTitle>
+
+            <AlertDialogDescription>
+              Sau khi hủy bạn sẽ phải đăng ký lại từ đầu.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Không</AlertDialogCancel>
+
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (cancelId) {
+                  cancelApplication(cancelId);
+                  setCancelId(null);
+                }
+              }}
+            >
+              Hủy đơn
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
