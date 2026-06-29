@@ -16,6 +16,8 @@ public partial class AppDbContext : DbContext
     {
     }
 
+    public virtual DbSet<Amenity> Amenities { get; set; }
+
     public virtual DbSet<AppUser> AppUsers { get; set; }
 
     public virtual DbSet<Contract> Contracts { get; set; }
@@ -28,8 +30,11 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Room> Rooms { get; set; }
 
+    public virtual DbSet<RoomTypeAmenity> RoomTypeAmenities { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        => optionsBuilder.UseNpgsql("Name=ConnectionStrings:DefaultConnection");
+#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
+        => optionsBuilder.UseNpgsql("Host=aws-1-ap-southeast-1.pooler.supabase.com;Database=postgres;Username=postgres.epzptadhxfuwtvxxsgaa;Password=dormmange123;SSL Mode=Require;Trust Server Certificate=true");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,13 +48,34 @@ public partial class AppDbContext : DbContext
             .HasPostgresEnum("auth", "oauth_registration_type", new[] { "dynamic", "manual" })
             .HasPostgresEnum("auth", "oauth_response_type", new[] { "code" })
             .HasPostgresEnum("auth", "one_time_token_type", new[] { "confirmation_token", "reauthentication_token", "recovery_token", "email_change_token_new", "email_change_token_current", "phone_change_token" })
+            .HasPostgresEnum("net", "request_status", new[] { "PENDING", "SUCCESS", "ERROR" })
             .HasPostgresEnum("realtime", "action", new[] { "INSERT", "UPDATE", "DELETE", "TRUNCATE", "ERROR" })
-            .HasPostgresEnum("realtime", "equality_op", new[] { "eq", "neq", "lt", "lte", "gt", "gte", "in" })
+            .HasPostgresEnum("realtime", "equality_op", new[] { "eq", "neq", "lt", "lte", "gt", "gte", "in", "like", "ilike", "is", "match", "imatch", "isdistinct" })
+            .HasPostgresEnum("room_gender_enum", new[] { "male", "female" })
+            .HasPostgresEnum("room_type_enum", new[] { "room_2", "room_4", "room_6", "room_8" })
             .HasPostgresEnum("storage", "buckettype", new[] { "STANDARD", "ANALYTICS", "VECTOR" })
+            .HasPostgresExtension("extensions", "pg_net")
             .HasPostgresExtension("extensions", "pg_stat_statements")
             .HasPostgresExtension("extensions", "pgcrypto")
             .HasPostgresExtension("extensions", "uuid-ossp")
             .HasPostgresExtension("vault", "supabase_vault");
+
+        modelBuilder.Entity<Amenity>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("amenities_pkey");
+
+            entity.ToTable("amenities");
+
+            entity.HasIndex(e => e.Name, "amenities_name_key").IsUnique();
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Name).HasColumnName("name");
+        });
 
         modelBuilder.Entity<AppUser>(entity =>
         {
@@ -206,6 +232,8 @@ public partial class AppDbContext : DbContext
 
             entity.HasIndex(e => e.InvoiceCode, "invoices_invoice_code_key").IsUnique();
 
+            entity.HasIndex(e => e.PaymentCode, "invoices_payment_code_key").IsUnique();
+
             entity.HasIndex(e => new { e.StudentId, e.Status, e.CreatedAt }, "invoices_student_status_idx").IsDescending(false, false, true);
 
             entity.Property(e => e.Id)
@@ -222,6 +250,7 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("created_at");
             entity.Property(e => e.DueDate).HasColumnName("due_date");
             entity.Property(e => e.InvoiceCode).HasColumnName("invoice_code");
+            entity.Property(e => e.PaymentCode).HasColumnName("payment_code");
             entity.Property(e => e.Status)
                 .HasDefaultValueSql("'unpaid'::text")
                 .HasColumnName("status");
@@ -249,6 +278,8 @@ public partial class AppDbContext : DbContext
 
             entity.HasIndex(e => new { e.InvoiceId, e.Status }, "payments_invoice_status_idx");
 
+            entity.HasIndex(e => e.ProviderTransactionId, "payments_provider_transaction_id_key").IsUnique();
+
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
@@ -269,6 +300,12 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("'cash'::text")
                 .HasColumnName("payment_method");
             entity.Property(e => e.ProofUrl).HasColumnName("proof_url");
+            entity.Property(e => e.Provider).HasColumnName("provider");
+            entity.Property(e => e.ProviderPayload)
+                .HasColumnType("jsonb")
+                .HasColumnName("provider_payload");
+            entity.Property(e => e.ProviderReferenceCode).HasColumnName("provider_reference_code");
+            entity.Property(e => e.ProviderTransactionId).HasColumnName("provider_transaction_id");
             entity.Property(e => e.Status)
                 .HasDefaultValueSql("'pending_confirmation'::text")
                 .HasColumnName("status");
@@ -320,15 +357,25 @@ public partial class AppDbContext : DbContext
                 .HasPrecision(12, 2)
                 .HasColumnName("price_per_month");
             entity.Property(e => e.RoomNumber).HasColumnName("room_number");
-            entity.Property(e => e.RoomType)
-                .HasDefaultValueSql("'standard'::text")
-                .HasColumnName("room_type");
             entity.Property(e => e.Status)
                 .HasDefaultValueSql("'available'::text")
                 .HasColumnName("status");
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
+        });
+
+        modelBuilder.Entity<RoomTypeAmenity>(entity =>
+        {
+            entity
+                .HasNoKey()
+                .ToTable("room_type_amenities");
+
+            entity.Property(e => e.AmenityId).HasColumnName("amenity_id");
+
+            entity.HasOne(d => d.Amenity).WithMany()
+                .HasForeignKey(d => d.AmenityId)
+                .HasConstraintName("room_type_amenities_amenity_id_fkey");
         });
 
         OnModelCreatingPartial(modelBuilder);

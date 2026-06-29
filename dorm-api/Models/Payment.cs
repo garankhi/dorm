@@ -31,6 +31,14 @@ public partial class Payment
 
     public DateTime UpdatedAt { get; set; }
 
+    public string? Provider { get; set; }
+
+    public string? ProviderTransactionId { get; set; }
+
+    public string? ProviderReferenceCode { get; set; }
+
+    public string? ProviderPayload { get; set; }
+
     public virtual AppUser? ConfirmedByUser { get; set; }
 
     public virtual Invoice Invoice { get; set; } = null!;
