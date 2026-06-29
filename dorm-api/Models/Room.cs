@@ -13,6 +13,8 @@ public partial class Room
 
     public int Floor { get; set; }
 
+    public string RoomType { get; set; } = null!;
+
     public int Capacity { get; set; }
 
     public int CurrentOccupancy { get; set; }
