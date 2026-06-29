@@ -33,8 +33,12 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<RoomTypeAmenity> RoomTypeAmenities { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseNpgsql("Host=aws-1-ap-southeast-1.pooler.supabase.com;Database=postgres;Username=postgres.epzptadhxfuwtvxxsgaa;Password=dormmange123;SSL Mode=Require;Trust Server Certificate=true");
+    {
+        if (!optionsBuilder.IsConfigured)
+        {
+            optionsBuilder.UseNpgsql("Name=ConnectionStrings:DefaultConnection");
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -357,6 +361,9 @@ public partial class AppDbContext : DbContext
                 .HasPrecision(12, 2)
                 .HasColumnName("price_per_month");
             entity.Property(e => e.RoomNumber).HasColumnName("room_number");
+            entity.Property(e => e.RoomType)
+                .HasDefaultValueSql("'room_4'::room_type_enum")
+                .HasColumnName("room_type");
             entity.Property(e => e.Status)
                 .HasDefaultValueSql("'available'::text")
                 .HasColumnName("status");
