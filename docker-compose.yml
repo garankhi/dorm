@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: ./dorm-api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ConnectionStrings__DefaultConnection: ${DORM_DB_CONNECTION}
+      Jwt__Key: ${DORM_JWT_KEY}
+      Jwt__Issuer: ${DORM_JWT_ISSUER}
+      Jwt__Audience: ${DORM_JWT_AUDIENCE}
+      AllowedOrigins__0: ${DORM_WEB_ORIGIN}
+      Sepay__WebhookSecret: ${SEPAY_WEBHOOK_SECRET}
+      Sepay__Bank: ${SEPAY_BANK}
+      Sepay__AccountNumber: ${SEPAY_ACCOUNT_NUMBER}
+      Sepay__AccountHolder: ${SEPAY_ACCOUNT_HOLDER}
+    expose:
+      - "8080"
+
+  web:
+    build:
+      context: ./dorm-web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    expose:
+      - "80"
