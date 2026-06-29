@@ -100,7 +100,7 @@ export default function AdminApplicationsPage() {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const pageStartIndex = total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const pageEndIndex = Math.min(currentPage * PAGE_SIZE, total);
-  const paginatedApplications = filteredApplications.slice(pageStartIndex, pageEndIndex);
+  const paginatedApplications = filteredApplications;
   const detailApplication = applications.find((application) => application.id === detailId) ?? null;
 
   useEffect(() => {
@@ -357,8 +357,8 @@ export default function AdminApplicationsPage() {
         <AdminPagination
           page={currentPage}
           pageCount={pageCount}
-          total={filteredApplications.length}
-          start={pageStartIndex + 1}
+          total={total}
+          start={pageStartIndex}
           end={pageEndIndex}
           onPageChange={setCurrentPage}
         />
