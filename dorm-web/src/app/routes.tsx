@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router"; 
 import { getCurrentUser } from "./auth";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -7,6 +7,7 @@ import AdminLayout from "./layouts/AdminLayout";
 import DashboardPage from "./pages/student/DashboardPage";
 import ProfilePage from "./pages/student/ProfilePage";
 import RoomsPage from "./pages/student/RoomsPage";
+import RoomDetailPage from "./pages/student/RoomDetailPage";
 import ApplicationsPage from "./pages/student/ApplicationsPage";
 import ContractsPage from "./pages/student/ContractsPage";
 import InvoicesPage from "./pages/student/InvoicesPage";
@@ -49,7 +50,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "profile", element: <ProfilePage /> },
       { path: "rooms", element: <RoomsPage /> },
-      { path: "applications", element: <ApplicationsPage /> },
+      { path: "rooms/:id", element: <RoomDetailPage /> },
       { path: "contracts", element: <ContractsPage /> },
       { path: "invoices", element: <InvoicesPage /> },
     ],

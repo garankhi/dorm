@@ -370,17 +370,25 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
+            entity.Property(e => e.RoomGender)
+                .HasDefaultValueSql("'unisex'::text")
+                .HasColumnName("room_gender");
         });
 
         modelBuilder.Entity<RoomTypeAmenity>(entity =>
         {
-            entity
-                .HasNoKey()
-                .ToTable("room_type_amenities");
+            entity.ToTable("room_type_amenities", "public");
 
-            entity.Property(e => e.AmenityId).HasColumnName("amenity_id");
+            entity.HasKey(e => new { e.RoomType, e.AmenityId });
 
-            entity.HasOne(d => d.Amenity).WithMany()
+            entity.Property(e => e.RoomType)
+                .HasColumnName("room_type");
+
+            entity.Property(e => e.AmenityId)
+                .HasColumnName("amenity_id");
+
+            entity.HasOne(d => d.Amenity)
+                .WithMany()
                 .HasForeignKey(d => d.AmenityId)
                 .HasConstraintName("room_type_amenities_amenity_id_fkey");
         });
