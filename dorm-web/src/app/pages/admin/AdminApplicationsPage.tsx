@@ -127,27 +127,21 @@ export default function AdminApplicationsPage() {
     setReviewError("");
   };
 
-  const updateApplicationStatus = (id: string, status: ApplicationStatus, note?: string) => {
-    setApplications((current) =>
-      current.map((application) =>
-        application.id === id
-          ? {
-            ...application,
-            status,
-            adminNote: note?.trim() || application.adminNote,
-          }
-          : application,
-      ),
-    );
-    closeDetails();
-  };
-
   const handleApprove = async (application: AdminApplication) => {
     if (application.status !== "pending") return;
 
-    await approveApplication(application.id, reviewNote);
-    closeDetails();
-    await loadApplications();
+    setError("");
+    setReviewError("");
+
+    try {
+      await approveApplication(application.id, reviewNote);
+      closeDetails();
+      await loadApplications();
+    } catch (err: any) {
+      const message = err?.message || "Chấp nhận đơn thất bại";
+      if (detailId === application.id) setReviewError(message);
+      else setError(message);
+    }
   };
 
   const handleReject = async (application: AdminApplication) => {
@@ -157,9 +151,16 @@ export default function AdminApplicationsPage() {
       return;
     }
 
-    await rejectApplication(application.id, reviewNote);
-    closeDetails();
-    await loadApplications();
+    setError("");
+    setReviewError("");
+
+    try {
+      await rejectApplication(application.id, reviewNote);
+      closeDetails();
+      await loadApplications();
+    } catch (err: any) {
+      setReviewError(err?.message || "Từ chối đơn thất bại");
+    }
   };
 
   const statItems = [
@@ -287,7 +288,7 @@ export default function AdminApplicationsPage() {
                             <button
                               onClick={(event) => {
                                 event.stopPropagation();
-                                updateApplicationStatus(application.id, "approved");
+                                void handleApprove(application);
                               }}
                               className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"
                             >
@@ -337,7 +338,7 @@ export default function AdminApplicationsPage() {
                   <button onClick={() => openDetails(application.id)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground">Xem</button>
                   {application.status === "pending" && (
                     <>
-                      <button onClick={() => updateApplicationStatus(application.id, "approved")} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">Duyệt</button>
+                      <button onClick={() => void handleApprove(application)} className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground">Duyệt</button>
                       <button onClick={() => { openDetails(application.id); setReviewError("Vui lòng nhập lý do từ chối."); }} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600">Từ chối</button>
                     </>
                   )}
