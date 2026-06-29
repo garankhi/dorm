@@ -3,13 +3,15 @@ import { getCurrentUser } from "./auth";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import StudentLayout from "./layouts/StudentLayout";
+import AdminLayout from "./layouts/AdminLayout";
 import DashboardPage from "./pages/student/DashboardPage";
 import ProfilePage from "./pages/student/ProfilePage";
 import RoomsPage from "./pages/student/RoomsPage";
 import ApplicationsPage from "./pages/student/ApplicationsPage";
 import ContractsPage from "./pages/student/ContractsPage";
 import InvoicesPage from "./pages/student/InvoicesPage";
-import AdminPlaceholder from "./pages/AdminPlaceholder";
+import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
+import AdminRoomsPage from "./pages/admin/AdminRoomsPage";
 
 function RequireStudent({ children }: { children: React.ReactNode }) {
   const user = getCurrentUser();
@@ -56,8 +58,13 @@ export const router = createBrowserRouter([
     path: "/admin",
     element: (
       <RequireAdmin>
-        <AdminPlaceholder />
+        <AdminLayout />
       </RequireAdmin>
     ),
+    children: [
+      { index: true, element: <Navigate to="applications" replace /> },
+      { path: "applications", element: <AdminApplicationsPage /> },
+      { path: "rooms", element: <AdminRoomsPage /> },
+    ],
   },
 ]);

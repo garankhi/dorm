@@ -47,6 +47,98 @@ node --version
 npm --version
 ```
 
+## Supabase migrations
+
+Tat ca thay doi database nhu them cot, them bang, doi enum, them index, constraint, hoac backfill du lieu phai di qua file migration trong `supabase/migrations/`.
+
+Quy tac team:
+
+1. Khong sua migration cu neu file do da tung apply len Supabase remote.
+2. Khong chay SQL truc tiep tren Supabase Dashboard tru khi can sua loi khan cap.
+3. Luon commit file migration moi len GitHub cung voi code backend/frontend lien quan.
+4. Chi mot nguoi hoac CI duoc push migration len cloud tai mot thoi diem.
+
+Tao migration moi tu root repo:
+
+```powershell
+cd D:\Project\dorm
+supabase migration new add_room_type_gender_and_amenities
+```
+
+Lenh tren se tao file dang:
+
+```text
+supabase/migrations/<timestamp>_add_room_type_gender_and_amenities.sql
+```
+
+Viet SQL vao file moi. Thu tu nen lam trong migration:
+
+1. Tao type, bang, cot moi neu can.
+2. Chuan hoa/backfill du lieu cu truoc khi ep enum, `not null`, `check`, foreign key.
+3. Them constraint/index sau khi du lieu da hop le.
+4. Neu tao bang trong schema `public`, can xem xet RLS/policy va `grant` theo nhu cau truy cap.
+
+Kien truc hien tai la:
+
+```text
+Frontend -> .NET Web API -> EF Core -> Supabase PostgreSQL
+```
+
+Frontend khong goi Supabase truc tiep, nen khong expose bang ra client neu backend la noi duy nhat truy cap database.
+
+Lan dau day migration len cloud, dang nhap va link repo voi Supabase project cua team:
+
+```powershell
+supabase login
+supabase link --project-ref epzptadhxfuwtvxxsgaa
+```
+
+Truoc khi push len cloud, xem migration history:
+
+```powershell
+supabase migration list --linked
+```
+
+Cot `Local` la file dang co trong repo. Cot `Remote` la migration da duoc Supabase ghi nhan la da apply tren cloud.
+
+Chay dry-run truoc moi lan push:
+
+```powershell
+supabase db push --linked --dry-run
+```
+
+Chi push khi dry-run chi hien nhung migration moi can deploy. Vi du:
+
+```text
+Would push these migrations:
+ • 20260629025112_add_room_type_gender_and_amenities.sql
+```
+
+Neu dry-run hien lai `001_mvp_schema.sql` trong khi cloud da co cac bang MVP, dung push ngay vi migration se thu tao lai bang cu va bi loi trung table. Khi schema MVP da tung duoc tao bang SQL thu cong, danh dau baseline `001` la da applied mot lan:
+
+```powershell
+supabase migration repair --linked --status applied 001
+supabase migration list --linked
+supabase db push --linked --dry-run
+```
+
+Sau khi dry-run dung, push len cloud:
+
+```powershell
+supabase db push --linked
+```
+
+Neu muon test local truoc khi day cloud, can Docker Desktop va Supabase local stack:
+
+```powershell
+supabase init
+supabase start
+supabase migration up
+supabase migration list --local
+```
+
+Local Supabase khong bat buoc neu team dang dev truc tiep voi Supabase cloud, nhung dry-run tren cloud la bat buoc.
+
 ## Cau hinh backend
 
 Backend dung file local:
