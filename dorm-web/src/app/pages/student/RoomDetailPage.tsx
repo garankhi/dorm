@@ -149,6 +149,26 @@ export default function RoomDetailPage() {
     }
   };
 
+  // Hàm chuyển đổi Loại phòng
+const formatRoomType = (type: string) => {
+  const mapping: Record<string, string> = {
+    room_2: "Phòng 2 người",
+    room_4: "Phòng 4 người",
+    room_6: "Phòng 6 người",
+    room_8: "Phòng 8 người",
+  };
+  return mapping[type] || type; // Nếu không khớp thì giữ nguyên giá trị cũ
+};
+
+// Hàm chuyển đổi Trạng thái phòng
+const formatRoomStatus = (status: string) => {
+  const mapping: Record<string, string> = {
+    available: "Còn chỗ",
+    full: "Hết chỗ",
+  };
+  return mapping[status.toLowerCase()] || status;
+};
+
   return (
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       {/* Nút quay lại */}
@@ -204,21 +224,11 @@ export default function RoomDetailPage() {
             <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-xl">
               <div>
                 <span className="text-muted-foreground block text-xs">Loại phòng</span>
-                <span className="font-medium text-foreground">{room.roomType}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-xs">Sức chứa tối đa</span>
-                <span className="font-medium text-foreground flex items-center gap-1">
-                  <Users size={14} /> {room.capacity} người
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-xs">Số người hiện tại</span>
-                <span className="font-medium text-foreground">{room.currentOccupancy} người</span>
+                <span className="font-medium text-foreground">{formatRoomType(room.roomType)}</span>
               </div>
               <div>
                 <span className="text-muted-foreground block text-xs">Trạng thái phòng</span>
-                <span className="font-medium text-foreground capitalize">{room.status}</span>
+                <span className="font-medium text-foreground capitalize">{formatRoomStatus(room.status)}</span>
               </div>
             </div>
 
@@ -283,7 +293,7 @@ export default function RoomDetailPage() {
                 </div>
               ) : (
                 <button
-                  disabled={isFull && !hasActiveApplication}
+                  disabled={isFull}
                   onClick={() => {
                     if (hasActiveApplication) {
                       toast.error("Bạn đang có đơn đăng ký phòng khác. Vui lòng hủy đơn cũ trước.");
@@ -293,7 +303,7 @@ export default function RoomDetailPage() {
                   }}
                   className="w-full py-2.5 px-4 text-sm font-semibold bg-primary text-white rounded-xl shadow-sm hover:opacity-95 disabled:opacity-30 disabled:pointer-events-none transition"
                 >
-                  {isFull ? "Phòng đã hết chỗ" : "Đăng ký phòng"}
+                  {isFull ? "Hết chỗ" : "Đăng ký phòng"}
                 </button>
               )}
             </div>

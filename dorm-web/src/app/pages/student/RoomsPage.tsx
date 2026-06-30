@@ -109,7 +109,6 @@ export default function RoomsPage() {
 
   const cancelApplication = async (id: string) => {
     try {
-      const roomId = activeApp?.roomId;
       await api.delete(`/DormApplications/${id}`);
       await loadRooms();
       await loadApplications();
@@ -189,7 +188,6 @@ export default function RoomsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filtered.map((room) => {
             const isMyRoom = activeApp?.roomId === room.id;
-            const hasActiveApplication = !!activeApp;
             const isApplied = applications.some((a) => a.roomId === room.id);
             const full = room.available === 0;
 
@@ -277,7 +275,7 @@ export default function RoomsPage() {
                       </span>
                     ) : (
                       <button
-                        disabled={full && !hasActiveApplication}
+                        disabled={full}
                         onClick={(e) => {
                           e.stopPropagation();
                           setRegisterRoomId(room.id);
