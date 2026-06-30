@@ -241,7 +241,7 @@ export default function RoomsPage() {
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
                       full ? "bg-red-50 text-red-500" : "bg-green-50 text-green-600"
                     }`}>
-                      {full ? "Hết phòng" : `Còn ${room.available} chỗ`}
+                      {full ? "Hết chỗ" : `Còn ${room.available} chỗ`}
                     </span>
                   </div>
                 </div>

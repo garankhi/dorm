@@ -4,7 +4,6 @@ import api from "../../api/dorm";
 import { toast } from "sonner";
 import { 
   BedDouble, 
-  Users, 
   ArrowLeft, 
   Wifi, 
   Tv, 
@@ -30,7 +29,7 @@ import {
 } from "../../components/ui/alert-dialog";
 
 interface Amenity {
-  id: string;
+  id: string; 
   name: string;
 }
 
@@ -47,7 +46,7 @@ interface RoomDetail {
   pricePerMonth: number;
   status: string;
   description?: string;
-  amenities: Amenity[];
+  amenities: Amenity[]; 
 }
 
 const getAmenityIcon = (name: string) => {
@@ -149,28 +148,25 @@ export default function RoomDetailPage() {
     }
   };
 
-  // Hàm chuyển đổi Loại phòng
-const formatRoomType = (type: string) => {
-  const mapping: Record<string, string> = {
-    room_2: "Phòng 2 người",
-    room_4: "Phòng 4 người",
-    room_6: "Phòng 6 người",
-    room_8: "Phòng 8 người",
+  const formatRoomType = (type: string) => {
+    const mapping: Record<string, string> = {
+      standard: "Cơ bản",
+      premium: "Tiêu chuẩn",
+      deluxe: "Cao cấp",
+    };
+    return mapping[type.toLowerCase()] || type;
   };
-  return mapping[type] || type; // Nếu không khớp thì giữ nguyên giá trị cũ
-};
 
-// Hàm chuyển đổi Trạng thái phòng
-const formatRoomStatus = (status: string) => {
-  const mapping: Record<string, string> = {
-    available: "Còn chỗ",
-    full: "Hết chỗ",
+  const formatRoomStatus = (status: string) => {
+    const mapping: Record<string, string> = {
+      available: "Còn chỗ",
+      full: "Hết chỗ",
+    };
+    return mapping[status.toLowerCase()] || status;
   };
-  return mapping[status.toLowerCase()] || status;
-};
 
   return (
-    <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
       {/* Nút quay lại */}
       <button
         onClick={() => navigate(-1)}
@@ -201,41 +197,63 @@ const formatRoomStatus = (status: string) => {
             </p>
           </div>
         </div>
-
-        <div className="text-left sm:text-right">
-          <p className="text-2xl font-bold text-primary">
-            {room.pricePerMonth.toLocaleString("vi-VN")}₫
-            <span className="text-xs font-normal text-muted-foreground"> / tháng</span>
-          </p>
-          <p className={`text-sm font-medium mt-1 ${isFull ? "text-red-500" : "text-green-600"}`}>
-            {isFull ? "Hiện đã hết chỗ" : `Còn trống ${room.available} / ${room.capacity} chỗ`}
-          </p>
-        </div>
       </div>
 
       {/* Grid nội dung chi tiết */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Cột trái: Thông tin tổng quan & Mô tả */}
+        {/* CỘT TRÁI: Nhóm toàn bộ thông tin chi tiết phòng và tiện ích vào đây */}
         <div className="md:col-span-2 space-y-6">
-          <div className="bg-white rounded-2xl border border-border p-6 shadow-sm space-y-3">
-            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-              <Sparkles size={18} className="text-amber-500" /> Thông tin loại phòng
-            </h2>
-            <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-xl">
-              <div>
-                <span className="text-muted-foreground block text-xs">Loại phòng</span>
-                <span className="font-medium text-foreground">{formatRoomType(room.roomType)}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground block text-xs">Trạng thái phòng</span>
-                <span className="font-medium text-foreground capitalize">{formatRoomStatus(room.status)}</span>
+          <div className="bg-white rounded-2xl border border-border p-6 shadow-sm space-y-5">
+            {/* Phần 1: Thông tin loại phòng */}
+            <div className="space-y-3">
+              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+                <Sparkles size={18} className="text-amber-500" /> Thông tin loại phòng
+              </h2>
+              <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <div>
+                  <span className="text-muted-foreground block text-xs mb-0.5">Loại phòng</span>
+                  <span className="font-semibold text-foreground">{formatRoomType(room.roomType)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-xs mb-0.5">Trạng thái phòng</span>
+                  <span className="font-semibold text-foreground">{formatRoomStatus(room.status)}</span>
+                </div>
               </div>
             </div>
 
+            {/* Phần 2: Đưa danh sách tiện ích vào chung cột - Grid 2 columns */}
+            <div className="space-y-3 pt-2 border-t border-dashed border-border">
+              <h2 className="text-base font-semibold text-foreground">
+                Danh sách tiện ích
+              </h2>
+
+              {room.amenities && room.amenities.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {room.amenities.map((item) => (
+                    <div 
+                      key={item.id} 
+                      className="flex items-center gap-3 p-2.5 rounded-xl border border-border hover:bg-slate-50 transition"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
+                        {getAmenityIcon(item.name)}
+                      </div>
+                      <span className="text-sm font-medium text-foreground">{item.name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-muted-foreground bg-slate-50 rounded-xl border border-dashed border-border">
+                  <HelpCircle size={24} className="mx-auto mb-1.5 opacity-40" />
+                  <p className="text-xs">Phòng này chưa cấu hình tiện ích riêng.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Phần 3: Mô tả thêm */}
             {room.description && (
-              <div className="pt-2">
-                <span className="text-muted-foreground block text-xs mb-1">Mô tả thêm</span>
-                <p className="text-sm text-foreground leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">
+              <div className="space-y-1.5 pt-2 border-t border-dashed border-border">
+                <span className="text-muted-foreground block text-xs font-medium">Mô tả thêm</span>
+                <p className="text-sm text-foreground leading-relaxed bg-slate-50/50 p-3 rounded-lg border border-slate-100">
                   {room.description}
                 </p>
               </div>
@@ -243,44 +261,34 @@ const formatRoomStatus = (status: string) => {
           </div>
         </div>
 
-        {/* Cột phải: HIỂN THỊ AMENITIES & Nút hành động */}
+        {/* CỘT PHẢI: Khối thông tin Đăng ký & Tình trạng (Sticky) */}
         <div className="md:col-span-1">
           <div className="bg-white rounded-2xl border border-border p-6 shadow-sm space-y-4 sticky top-6">
-            <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-              Danh sách tiện ích
-            </h2>
-
-            {room.amenities && room.amenities.length > 0 ? (
-              <div className="flex flex-col gap-2.5">
-                {room.amenities.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="flex items-center gap-3 p-2.5 rounded-xl border border-border hover:bg-slate-50 transition"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                      {getAmenityIcon(item.name)}
-                    </div>
-                    <span className="text-sm font-medium text-foreground">{item.name}</span>
-                  </div>
-                ))}
+            <div>
+              <span className="text-xs text-muted-foreground block font-medium uppercase tracking-wider mb-1">
+                Chi phí lưu trú
+              </span>
+              <p className="text-2xl font-bold text-primary">
+                {room.pricePerMonth.toLocaleString("vi-VN")}₫
+                <span className="text-xs font-normal text-muted-foreground"> / tháng</span>
+              </p>
+              <div className="flex items-center justify-between text-sm mt-3 pt-3 border-t border-slate-100 text-muted-foreground">
+                <p className={`text-sm font-medium mt-1 ${isFull ? "text-red-500" : "text-green-600"}`}>
+            {isFull ? "Hiện đã hết chỗ" : `Còn trống ${room.available} / ${room.capacity} chỗ`}
+                </p>
               </div>
-            ) : (
-              <div className="text-center py-6 text-muted-foreground bg-slate-50 rounded-xl border border-dashed border-border">
-                <HelpCircle size={24} className="mx-auto mb-1.5 opacity-40" />
-                <p className="text-xs">Phòng này chưa cấu hình tiện ích riêng.</p>
-              </div>
-            )}
+            </div>
 
-            {/* Nút hành động xử lý nghiệp vụ y hệt roomspage */}
+            {/* Khối xử lý nghiệp vụ các Nút hành động */}
             <div className="pt-2">
               {isMyRoom ? (
                 <div className="flex flex-col gap-2 bg-green-50 p-3 rounded-xl border border-green-100 text-center">
                   <span className="text-green-600 text-sm font-semibold">
-                    Đang chọn
+                    Đang chọn phòng này
                   </span>
                   <button
                     onClick={() => setCancelId(activeApp.id)}
-                    className="text-xs px-3 py-1.5 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition"
+                    className="text-xs w-full py-2 bg-red-500 text-white font-medium rounded-lg hover:bg-red-600 transition shadow-sm"
                   >
                     Hủy đơn đăng ký
                   </button>
@@ -303,7 +311,7 @@ const formatRoomStatus = (status: string) => {
                   }}
                   className="w-full py-2.5 px-4 text-sm font-semibold bg-primary text-white rounded-xl shadow-sm hover:opacity-95 disabled:opacity-30 disabled:pointer-events-none transition"
                 >
-                  {isFull ? "Hết chỗ" : "Đăng ký phòng"}
+                  {isFull ? "Hết chỗ" : "Đăng ký xếp phòng"}
                 </button>
               )}
             </div>
