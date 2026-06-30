@@ -1,7 +1,9 @@
-import { BedDouble, Users, CheckCircle2, Search } from "lucide-react";
+import { BedDouble, Users, Search } from "lucide-react";
+import { Badge } from "../../components/ui/badge";
 import { useEffect, useState } from "react";
 import api from "../../api/dorm";
 import { toast } from "sonner";
+import { useNavigate } from "react-router";
 
 import {
   AlertDialog,
@@ -27,11 +29,12 @@ export default function RoomsPage() {
     pricePerMonth: number;
     status: string;
     description?: string;
+    roomGender: string;
   }
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "available">("all");
-  const [applied, setApplied] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "available">("all");
+  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
@@ -39,32 +42,37 @@ export default function RoomsPage() {
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [registerRoomId, setRegisterRoomId] = useState<string | null>(null);
 
+  const navigate = useNavigate();
+
   const loadRooms = async () => {
     try {
-      const res = await api.get("/DormApplications/rooms");
+      const res = await api.get("/rooms");
       setRooms(res.data);
+    } catch (err) {
+      console.error("Không thể tải danh sách phòng", err);
     } finally {
       setLoading(false);
     }
   };
 
   const loadApplications = async () => {
-    const res = await api.get("/DormApplications/me");
+    try {
+      const res = await api.get("/DormApplications/me");
+      const mapped = res.data.map((x: any) => ({
+        id: x.id,
+        roomId: x.roomId,
+        room: `${x.buildingName} - ${x.roomNumber}`,
+        status: x.status,
+        submittedAt: x.submittedAt,
+        note: x.reason,
+      }));
 
-    const mapped = res.data.map((x: any) => ({
-      id: x.id,
-      roomId: x.roomId,
-      room: `${x.buildingName} - ${x.roomNumber}`,
-      status: x.status,
-      submittedAt: x.submittedAt,
-      note: x.reason,
-    }));
-
-    setApplications(mapped);
-
-    const active = mapped.find((x: any) => x.status === "pending");
-
-    setActiveApp(active || null);
+      setApplications(mapped);
+      const active = mapped.find((x: any) => x.status === "pending");
+      setActiveApp(active || null);
+    } catch (err) {
+      console.error("Không thể tải đơn đăng ký", err);
+    }
   };
 
   useEffect(() => {
@@ -72,42 +80,25 @@ export default function RoomsPage() {
     loadApplications();
   }, []);
 
-  const appliedRoomIds = new Set(applications.map((a: any) => a.roomId));
-
   const filtered = rooms.filter((r) => {
     const matchSearch =
       r.roomNumber.toLowerCase().includes(search.toLowerCase()) ||
       r.buildingName.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = filter === "all" || r.available > 0;
-    return matchSearch && matchFilter;
+
+    const matchFilter = statusFilter === "all" || r.available > 0;
+    const matchGender = genderFilter === "all" || r.roomGender.toLowerCase() === genderFilter;
+
+    return matchSearch && matchFilter && matchGender;
   });
 
   const registerRoom = async (roomId: string) => {
     try {
       if (activeApp && activeApp.roomId !== roomId) {
-        toast.error(
-          "Bạn đang có đơn đăng ký phòng khác. Vui lòng hủy đơn trước.",
-        );
+        toast.error("Bạn đang có đơn đăng ký phòng khác. Vui lòng hủy đơn trước.");
         return;
       }
-
-      await api.post("/DormApplications", {
-        roomId,
-      });
-
-      // cập nhật UI ngay
-      setRooms((prev) =>
-        prev.map((r) =>
-          r.id === roomId
-            ? {
-                ...r,
-                currentOccupancy: r.currentOccupancy + 1,
-                available: Math.max(0, r.available - 1),
-              }
-            : r,
-        ),
-      );
-
+      await api.post("/DormApplications", { roomId });
+      await loadRooms();
       await loadApplications();
 
       toast.success("Đăng ký phòng thành công!");
@@ -118,26 +109,9 @@ export default function RoomsPage() {
 
   const cancelApplication = async (id: string) => {
     try {
-      const roomId = activeApp?.roomId;
-
       await api.delete(`/DormApplications/${id}`);
-
-      if (roomId) {
-        setRooms((prev) =>
-          prev.map((r) =>
-            r.id === roomId
-              ? {
-                  ...r,
-                  currentOccupancy: Math.max(0, r.currentOccupancy - 1),
-                  available: r.available + 1,
-                }
-              : r,
-          ),
-        );
-      }
-
+      await loadRooms();
       await loadApplications();
-
       toast.success("Đã hủy đơn đăng ký");
     } catch {
       toast.error("Hủy đơn thất bại");
@@ -145,162 +119,199 @@ export default function RoomsPage() {
   };
 
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold text-foreground">
-          Danh sách phòng
-        </h1>
+    <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Danh sách phòng</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Xem thông tin và đăng ký phòng ký túc xá.
+          Xem thông tin và đăng ký phòng ký túc xá hành trình mới.
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      {/* Bộ lọc */}
+      <div className="flex flex-col md:flex-row gap-3">
         <div className="relative flex-1">
           <Search
-            size={15}
+            size={16}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm phòng hoặc tòa nhà..."
-            className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-border bg-white text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring/30 focus:border-ring transition"
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-white text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition"
           />
         </div>
-        <div className="flex rounded-lg border border-border bg-white overflow-hidden text-sm">
-          {(["all", "available"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2.5 font-medium transition-colors ${
-                filter === f
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              {f === "all" ? "Tất cả" : "Còn chỗ"}
-            </button>
-          ))}
+
+        <div className="flex gap-3 shrink-0">
+          {/* Lọc Trạng Thái */}
+          <div className="flex rounded-xl border border-border bg-white p-1 text-sm shadow-sm">
+            {(["all", "available"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`px-4 py-1.5 font-medium rounded-lg transition-all ${
+                  statusFilter === f
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {f === "all" ? "Tất cả" : "Còn chỗ"}
+              </button>
+            ))}
+          </div>
+
+          {/* Lọc Giới Tính */}
+          <div className="flex rounded-xl border border-border bg-white p-1 text-sm shadow-sm">
+            {(["all", "male", "female"] as const).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGenderFilter(g)}
+                className={`px-4 py-1.5 font-medium rounded-lg transition-all ${
+                  genderFilter === g
+                    ? "bg-primary text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {g === "all" ? "Tất cả" : g === "male" ? "Nam" : "Nữ"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {filtered.map((room) => {
-          const isMyRoom = activeApp?.roomId === room.id;
-          const hasActiveApplication = !!activeApp;
-          const isApplied = applications.some((a) => a.roomId === room.id);
-          const full = room.available === 0;
-          return (
-            <div
-              key={room.id}
-              className={`bg-white rounded-2xl border p-5 flex flex-col gap-3 transition-shadow hover:shadow-sm ${
-                full ? "border-border opacity-70" : "border-border"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#e8ebff] flex items-center justify-center">
-                      <BedDouble size={15} className="text-primary" />
+      {/* Grid danh sách phòng */}
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filtered.map((room) => {
+            const isMyRoom = activeApp?.roomId === room.id;
+            const isApplied = applications.some((a) => a.roomId === room.id);
+            const full = room.available === 0;
+
+            return (
+              <div
+                key={room.id}
+                onClick={() => navigate(`/student/rooms/${room.id}`)}
+                className="p-5 group cursor-pointer bg-white rounded-2xl border border-border hover:border-primary hover:shadow-md transition-all duration-300 flex flex-col justify-between min-h-[250px]"
+              >
+                <div className="space-y-4">
+                  {/* Header Card */}
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                        <BedDouble size={20} />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-base group-hover:text-primary transition-colors">
+                          Phòng {room.roomNumber}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          {room.buildingName} • Tầng {room.floor}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">
-                        {room.roomNumber}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {room.buildingName} · {room.floor}
-                      </p>
+                    <Badge variant={room.roomGender.toLowerCase() === "male" ? "default" : "secondary"}>
+                      {room.roomGender.toLowerCase() === "male" ? "Nam" : "Nữ"}
+                    </Badge>
+                  </div>
+
+                  {/* Thanh Tiến Độ Chỗ Ở */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Users size={12} /> Đang ở
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {room.currentOccupancy}/{room.capacity}
+                      </span>
                     </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${(room.currentOccupancy / room.capacity) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Trạng thái trống */}
+                  <div>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                      full ? "bg-red-50 text-red-500" : "bg-green-50 text-green-600"
+                    }`}>
+                      {full ? "Hết chỗ" : `Còn ${room.available} chỗ`}
+                    </span>
                   </div>
                 </div>
-                <span
-                  className={`text-xs font-medium px-2 py-1 rounded-full ${
-                    room.roomType === "Nam"
-                      ? "bg-blue-50 text-blue-600"
-                      : "bg-pink-50 text-pink-600"
-                  }`}
-                >
-                  {room.roomType}
-                </span>
-              </div>
 
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Users size={12} />
-                  Sức chứa: {room.capacity} người
-                </span>
-                <span
-                  className={`font-medium ${full ? "text-red-500" : "text-green-600"}`}
-                >
-                  {full ? "Hết chỗ" : `Còn ${room.available} chỗ trống`}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pt-1 border-t border-border">
-                <p className="text-sm font-semibold text-foreground">
-                  {room.pricePerMonth.toLocaleString("vi-VN")}₫
-                  <span className="text-xs font-normal text-muted-foreground">
-                    /tháng
-                  </span>
-                </p>
-                {isMyRoom ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-green-600 text-xs font-medium">
-                      Đang đăng ký
-                    </span>
-
-                    <button
-                      onClick={() => setCancelId(activeApp.id)}
-                      className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:opacity-90"
-                    >
-                      Hủy
-                    </button>
+                {/* Footer Card */}
+                <div className="flex justify-between items-center mt-5 pt-4 border-t border-slate-100">
+                  <div>
+                    <p className="text-lg font-bold text-primary">
+                      {room.pricePerMonth.toLocaleString("vi-VN")}₫
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">/ tháng</p>
                   </div>
-                ) : isApplied ? (
-                  <span className="text-gray-500 text-xs">
-                    Đã đăng ký phòng khác
-                  </span>
-                ) : (
-                  <button
-                    disabled={full && !hasActiveApplication}
-                    onClick={() => setRegisterRoomId(room.id)}
-                    className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg disabled:opacity-40"
-                  >
-                    {full ? "Hết chỗ" : "Đăng ký"}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
 
-      {filtered.length === 0 && (
-        <div className="text-center py-16 text-muted-foreground">
-          <BedDouble size={32} className="mx-auto mb-3 opacity-40" />
-          <p className="text-sm">Không tìm thấy phòng phù hợp.</p>
+                  <div className="flex items-center gap-3">
+                    {isMyRoom ? (
+                      <div className="flex items-center gap-2 bg-green-50 px-2.5 py-1 rounded-xl border border-green-100">
+                        <span className="text-green-600 text-xs font-semibold">Đang chọn</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCancelId(activeApp.id);
+                          }}
+                          className="text-xs px-2 py-1 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 transition"
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    ) : isApplied ? (
+                      <span className="text-muted-foreground text-xs bg-slate-50 px-2 py-1 rounded border">
+                        Đang chờ duyệt phòng khác
+                      </span>
+                    ) : (
+                      <button
+                        disabled={full}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRegisterRoomId(room.id);
+                        }}
+                        className="px-4 py-2 text-xs font-semibold bg-primary text-white rounded-xl hover:bg-primary/90 disabled:opacity-30 disabled:pointer-events-none transition"
+                      >
+                        {full ? "Hết chỗ" : "Đăng ký"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <AlertDialog
-        open={!!registerRoomId}
-        onOpenChange={() => setRegisterRoomId(null)}
-      >
+      {/* Trống kết quả */}
+      {!loading && filtered.length === 0 && (
+        <div className="text-center py-20 border border-dashed rounded-2xl bg-white">
+          <BedDouble size={40} className="mx-auto mb-3 opacity-20 text-primary" />
+          <p className="text-sm text-muted-foreground">Không tìm thấy phòng phù hợp với bộ lọc hiện tại.</p>
+        </div>
+      )}
+
+      {/* Dialog Xác Nhận Đăng Ký */}
+      <AlertDialog open={!!registerRoomId} onOpenChange={() => setRegisterRoomId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Xác nhận đăng ký</AlertDialogTitle>
-
+            <AlertDialogTitle>Xác nhận đăng ký phòng</AlertDialogTitle>
             <AlertDialogDescription>
-              Bạn có chắc chắn muốn đăng ký phòng này không?
+              Hệ thống sẽ gửi đơn đăng ký xét duyệt của bạn đến Ban quản lý ký túc xá. Bạn có chắc chắn muốn tiếp tục?
             </AlertDialogDescription>
           </AlertDialogHeader>
-
           <AlertDialogFooter>
             <AlertDialogCancel>Hủy</AlertDialogCancel>
-
             <AlertDialogAction
               onClick={() => {
                 if (registerRoomId) {
@@ -309,27 +320,25 @@ export default function RoomsPage() {
                 }
               }}
             >
-              Đăng ký
+              Đăng ký ngay
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Dialog Xác Nhận Hủy Đơn */}
       <AlertDialog open={!!cancelId} onOpenChange={() => setCancelId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Hủy đơn đăng ký?</AlertDialogTitle>
-
+            <AlertDialogTitle>Hủy đơn đăng ký phòng?</AlertDialogTitle>
             <AlertDialogDescription>
-              Sau khi hủy bạn sẽ phải đăng ký lại từ đầu.
+              Hành động này không thể hoàn tác. Bạn sẽ phải thực hiện gửi lại đơn đăng ký xếp phòng từ đầu nếu thay đổi ý định.
             </AlertDialogDescription>
           </AlertDialogHeader>
-
           <AlertDialogFooter>
-            <AlertDialogCancel>Không</AlertDialogCancel>
-
+            <AlertDialogCancel>Không, quay lại</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-red-600 hover:bg-red-700 text-white"
               onClick={() => {
                 if (cancelId) {
                   cancelApplication(cancelId);
@@ -337,7 +346,7 @@ export default function RoomsPage() {
                 }
               }}
             >
-              Hủy đơn
+              Xác nhận hủy đơn
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
