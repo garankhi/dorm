@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Building2,
+  ArrowLeft,
 } from "lucide-react";
 
 const navItems = [
@@ -32,6 +33,8 @@ export default function StudentLayout() {
     logout();
     navigate("/login");
   };
+
+  const isDashboard = location.pathname === "/student" || location.pathname === "/student/";
 
   const initials = user?.name
     .split(" ")
@@ -104,12 +107,15 @@ export default function StudentLayout() {
 
       {/* Mobile overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div className="fixed inset-0 z-50 md:hidden flex">
           <div
-            className="absolute inset-0 bg-black/30"
+            className="fixed inset-0 bg-black/40 transition-opacity animate-in fade-in duration-200"
             onClick={() => setSidebarOpen(false)}
           />
-          <div className="relative z-50 h-full">{sidebar}</div>
+          
+          <div className="relative z-10 h-full animate-in slide-in-from-left duration-200 shadow-xl">
+            {sidebar}
+          </div>
         </div>
       )}
 
@@ -117,17 +123,39 @@ export default function StudentLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile header */}
         <header className="md:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-border">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 text-muted-foreground hover:text-foreground"
-          >
-            <Menu size={20} />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Nếu KHÔNG PHẢI dashboard, hiển thị nút Quay lại. Nếu LÀ dashboard, hiển thị nút Menu Sidebar */}
+            {!isDashboard ? (
+              <button
+                onClick={() => navigate(-1)}
+                className="p-2 -ml-2 text-muted-foreground hover:text-foreground active:scale-95 transition"
+                title="Quay lại"
+              >
+                <ArrowLeft size={20} />
+              </button>
+            ) : (
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 -ml-2 text-muted-foreground hover:text-foreground active:scale-95 transition"
+              >
+                <Menu size={20} />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Building2 size={16} className="text-primary" />
             <span className="text-sm font-semibold">Ký Túc Xá</span>
           </div>
-          <div className="w-9" />
+          {!isDashboard ? (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-2 text-muted-foreground hover:text-foreground"
+            >
+              <Menu size={18} />
+            </button>
+          ) : (
+            <div className="w-9" />
+          )}
         </header>
 
         {/* Page content */}

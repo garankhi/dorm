@@ -4,7 +4,6 @@ import api from "../../api/dorm";
 import { toast } from "sonner";
 import { 
   BedDouble, 
-  ArrowLeft, 
   Wifi, 
   Tv, 
   Wind, 
@@ -167,14 +166,6 @@ export default function RoomDetailPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-6">
-      {/* Nút quay lại */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ArrowLeft size={16} /> Quay lại
-      </button>
-
       {/* Header thông tin phòng */}
       <div className="bg-white rounded-2xl border border-border p-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex items-center gap-4">
