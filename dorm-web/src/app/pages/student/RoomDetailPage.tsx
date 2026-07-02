@@ -133,7 +133,17 @@ export default function RoomDetailPage() {
       await loadApplications();
       toast.success("Đăng ký phòng thành công!");
     } catch (err: any) {
-      toast.error(err.response?.data?.error ?? "Đăng ký thất bại");
+      if (err.response?.data?.error === "profile_incomplete") {
+        toast.error(err.response.data.message, {
+          action: {
+            label: "Cập nhật ngay",
+            onClick: () => navigate("/student/profile")
+          },
+          duration: 5000
+        });
+      } else {
+        toast.error(err.response?.data?.error ?? "Đăng ký thất bại");
+      }
     }
   };
 
