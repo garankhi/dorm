@@ -26,7 +26,7 @@ public class DormApplicationsController : ControllerBase
     public async Task<IActionResult> Create(CreateDormApplicationRequest req)
     {
         var sub = User.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value
-                  ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
         if (!Guid.TryParse(sub, out var studentId))
             return Unauthorized();
@@ -40,6 +40,20 @@ public class DormApplicationsController : ControllerBase
 
         if (student == null)
             return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(student.Gender?.ToString()) ||
+            string.IsNullOrWhiteSpace(student.PhoneNumber) ||
+            string.IsNullOrWhiteSpace(student.StudentCode) ||
+            string.IsNullOrWhiteSpace(student.Faculty) ||
+            string.IsNullOrWhiteSpace(student.ClassName) ||
+            string.IsNullOrWhiteSpace(student.Address))
+        {
+            return BadRequest(new 
+            { 
+                error = "profile_incomplete", 
+                message = "Vui lòng cập nhật đầy đủ thông tin cá nhân trong trang Hồ sơ trước khi đăng ký." 
+            });
+        }
 
         if (student.Gender.ToString() != room.RoomGender.ToString())
         {
