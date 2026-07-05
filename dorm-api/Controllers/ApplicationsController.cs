@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Dorm.Api.Data;
 using Dorm.Api.Dtos;
+using Dorm.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -102,18 +103,86 @@ namespace Dorm.Api.Controllers
             var adminId = CurrentUserId();
             if (adminId is null) return Unauthorized();
 
-            var application = await _db.DormApplications.FindAsync(id);
+            await using var transaction = await _db.Database.BeginTransactionAsync();
+
+            var application = await _db.DormApplications
+                .Include(a => a.Room)
+                .Include(a => a.Student)
+                .FirstOrDefaultAsync(a => a.Id == id);
+
             if (application is null) return NotFound(new { error = "application_not_found" });
             if (application.Status != "pending") return Conflict(new { error = "application_not_pending" });
 
+            var room = application.Room;
+            if (room.Status is "maintenance" or "inactive" or "full")
+                return Conflict(new { error = "room_not_available" });
+
+            if (room.CurrentOccupancy >= room.Capacity)
+                return Conflict(new { error = "room_full" });
+
+            var hasOpenContract = await _db.Contracts.AnyAsync(c =>
+                c.StudentId == application.StudentId &&
+                (c.Status == "pending_payment" || c.Status == "active"));
+
+            if (hasOpenContract)
+                return Conflict(new { error = "student_already_has_open_contract" });
+
+            var reservedCount = await _db.Contracts.CountAsync(c =>
+                c.RoomId == room.Id && c.Status == "pending_payment");
+
+            var availableSlots = room.Capacity - room.CurrentOccupancy - reservedCount;
+            if (availableSlots <= 0)
+                return Conflict(new { error = "room_no_available_slots" });
+
+            var now = DateTime.UtcNow;
+            var startDate = DateOnly.FromDateTime(now);
+            var contract = new Contract
+            {
+                Id = Guid.NewGuid(),
+                StudentId = application.StudentId,
+                RoomId = application.RoomId,
+                ApplicationId = application.Id,
+                StartDate = startDate,
+                EndDate = startDate.AddMonths(6),
+                MonthlyPrice = room.PricePerMonth,
+                DepositAmount = 0,
+                Status = "pending_payment",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            var invoice = new Invoice
+            {
+                Id = Guid.NewGuid(),
+                StudentId = application.StudentId,
+                ContractId = contract.Id,
+                InvoiceCode = await NewInvoiceCode(),
+                BillingMonth = startDate.Month,
+                BillingYear = startDate.Year,
+                Amount = room.PricePerMonth,
+                DueDate = startDate.AddDays(7),
+                Status = "unpaid",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
             application.Status = "approved";
             application.AdminNote = string.IsNullOrWhiteSpace(req.AdminNote) ? application.AdminNote : req.AdminNote.Trim();
-            application.ReviewedAt = DateTime.UtcNow;
+            application.ReviewedAt = now;
             application.ReviewedByUserId = adminId;
-            application.UpdatedAt = DateTime.UtcNow;
+            application.UpdatedAt = now;
 
+            _db.Contracts.Add(contract);
+            _db.Invoices.Add(invoice);
             await _db.SaveChangesAsync();
-            return Ok(new { success = true });
+            await transaction.CommitAsync();
+
+            return Ok(new
+            {
+                success = true,
+                contractId = contract.Id,
+                invoiceId = invoice.Id
+            });
         }
 
         [HttpPatch("{id:guid}/reject")]
@@ -138,6 +207,22 @@ namespace Dorm.Api.Controllers
 
             await _db.SaveChangesAsync();
             return Ok(new { success = true });
+        }
+
+        private async Task<string> NewInvoiceCode()
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                var code = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+                var exists = await _db.Invoices.AnyAsync(i => i.InvoiceCode == code);
+
+                if (!exists)
+                {
+                    return code;
+                }
+            }
+
+            throw new InvalidOperationException("Cannot generate a unique invoice code.");
         }
     }
 }
