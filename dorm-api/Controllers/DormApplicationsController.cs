@@ -20,40 +20,13 @@ public class DormApplicationsController : ControllerBase
         _db = db;
     }
 
-    // GET api/DormApplications/rooms
-    [HttpGet("rooms")]
-    public async Task<IActionResult> GetRooms()
-    {
-        var rooms = await _db.Rooms
-            .OrderBy(r => r.BuildingName)
-            .ThenBy(r => r.RoomNumber)
-            .Select(r => new
-            {
-                r.Id,
-                r.BuildingName,
-                r.RoomNumber,
-                r.Floor,
-                r.RoomType,
-                r.Capacity,
-                r.CurrentOccupancy,
-                Reserved = r.Contracts.Count(c => c.Status == "pending_payment"),
-                Available = r.Capacity - r.CurrentOccupancy - r.Contracts.Count(c => c.Status == "pending_payment"),
-                r.PricePerMonth,
-                r.Status,
-                r.Description
-            })
-            .ToListAsync();
-
-        return Ok(rooms);
-    }
-
-    // POST api/DormApplications
+    // POST: api/DormApplications
     [HttpPost]
     [Authorize]
     public async Task<IActionResult> Create(CreateDormApplicationRequest req)
     {
         var sub = User.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value
-                  ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                ?? User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
         if (!Guid.TryParse(sub, out var studentId))
             return Unauthorized();
@@ -62,6 +35,30 @@ public class DormApplicationsController : ControllerBase
 
         if (room == null)
             return NotFound(new { error = "room_not_found" });
+
+        var student = await _db.AppUsers.FirstOrDefaultAsync(x => x.Id == studentId);
+
+        if (student == null)
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(student.Gender?.ToString()) ||
+            string.IsNullOrWhiteSpace(student.PhoneNumber) ||
+            string.IsNullOrWhiteSpace(student.StudentCode) ||
+            string.IsNullOrWhiteSpace(student.Faculty) ||
+            string.IsNullOrWhiteSpace(student.ClassName) ||
+            string.IsNullOrWhiteSpace(student.Address))
+        {
+            return BadRequest(new
+            {
+                error = "profile_incomplete",
+                message = "Vui lòng cập nhật đầy đủ thông tin cá nhân trong trang Hồ sơ trước khi đăng ký."
+            });
+        }
+
+        if (student.Gender.ToString() != room.RoomGender.ToString())
+        {
+            return BadRequest(new { error = "Phòng này không phù hợp với giới tính của bạn." });
+        }
 
         if (room.CurrentOccupancy >= room.Capacity)
             return BadRequest(new { error = "room_full" });
@@ -103,7 +100,7 @@ public class DormApplicationsController : ControllerBase
         ));
     }
 
-    // GET api/DormApplications/me
+    // GET: api/DormApplications/me
     [HttpGet("me")]
     [Authorize]
     public async Task<IActionResult> MyApplications()
@@ -118,24 +115,24 @@ public class DormApplicationsController : ControllerBase
             .Where(x => x.StudentId == studentId)
             .OrderByDescending(x => x.SubmittedAt)
             .Select(x => new DormApplicationResponse(
-    x.Id,
-    x.StudentId,
-    x.RoomId,
-    x.Room.RoomNumber,
-    x.Room.BuildingName,
-    x.Reason,
-    x.Status,
-    x.SubmittedAt,
-    x.ReviewedAt,
-    x.ReviewedByUserId,
-    x.AdminNote
-))
+                x.Id,
+                x.StudentId,
+                x.RoomId,
+                x.Room.RoomNumber,
+                x.Room.BuildingName,
+                x.Reason,
+                x.Status,
+                x.SubmittedAt,
+                x.ReviewedAt,
+                x.ReviewedByUserId,
+                x.AdminNote
+            ))
             .ToListAsync();
 
         return Ok(apps);
     }
 
-    //DELETE api/DormApplications/{id}
+    // DELETE: api/DormApplications/{id}
     [HttpDelete("{id}")]
     [Authorize]
     public async Task<IActionResult> DeleteApplication(Guid id)
@@ -151,9 +148,6 @@ public class DormApplicationsController : ControllerBase
 
         if (application == null)
             return NotFound(new { error = "application_not_found" });
-
-        if (application.StudentId != studentId)
-            return Forbid();
 
         if (application.Status != "pending")
             return BadRequest(new { error = "cannot_cancel_non_pending_application" });

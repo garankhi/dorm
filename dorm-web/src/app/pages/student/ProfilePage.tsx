@@ -30,7 +30,7 @@ export default function ProfilePage() {
         name: updated.name,
         email: updated.email,
         phone: updated.phone,
-        studentId: updated.studentId,
+        studentId: updated.studentId || "",
         gender: updated.gender || "",
         dateOfBirth: updated.dateOfBirth || "",
         faculty: updated.faculty || "",
@@ -52,7 +52,7 @@ export default function ProfilePage() {
       name: user.name,
       email: user.email,
       phone: user.phone,
-      studentId: user.studentId,
+      studentId: user.studentId || "",
       gender: user.gender || "",
       dateOfBirth: user.dateOfBirth || "",
       faculty: user.faculty || "",
@@ -98,7 +98,7 @@ export default function ProfilePage() {
             { label: "Họ và tên", key: "name", type: "text", placeholder: "Nguyễn Văn A", fullWidth: true },
             { label: "Email", key: "email", type: "email", placeholder: "email@example.com", disabled: true, fullWidth: true },
             { label: "Số điện thoại", key: "phone", type: "tel", placeholder: "0912 345 678" },
-            { label: "MSSV", key: "studentId", type: "text", placeholder: "Mã số sinh viên", disabled: true },
+            { label: "MSSV", key: "studentId", type: "text", placeholder: "Mã số sinh viên" },
             {
               label: "Giới tính",
               key: "gender",
@@ -110,9 +110,9 @@ export default function ProfilePage() {
               ]
             },
             { label: "Ngày sinh", key: "dateOfBirth", type: "date", placeholder: "yyyy-mm-dd" },
-            { label: "Khoa/Ngành", key: "faculty", type: "text", placeholder: "Công nghệ thông tin" },
-            { label: "Lớp học", key: "className", type: "text", placeholder: "IT01" },
-            { label: "Địa chỉ", key: "address", type: "text", placeholder: "Hà Nội", fullWidth: true },
+            { label: "Khoa/Ngành", key: "faculty", type: "text", placeholder: "Khoa/Ngành" },
+            { label: "Lớp học", key: "className", type: "text", placeholder: "Lớp học" },
+            { label: "Địa chỉ", key: "address", type: "text", placeholder: "Địa chỉ", fullWidth: true },
           ].map(({ label, key, type, placeholder, disabled, fullWidth, options }) => (
             <div key={key} className={fullWidth ? "sm:col-span-2" : ""}>
               <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
