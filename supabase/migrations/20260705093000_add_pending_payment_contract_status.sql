@@ -7,7 +7,7 @@ check (status in ('pending_payment', 'active', 'expired', 'terminated', 'cancell
 
 drop index if exists public.contracts_one_active_per_student;
 
-create unique index contracts_one_open_per_student
+create unique index if not exists contracts_one_open_per_student
   on public.contracts (student_id)
   where status in ('pending_payment', 'active');
 
