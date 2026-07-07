@@ -14,6 +14,20 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 
+function roomTypeLabel(type: string, capacity: number) {
+  const labels: Record<string, string> = {
+    room_2: "Phòng 2 người",
+    room_4: "Phòng 4 người",
+    room_6: "Phòng 6 người",
+    room_8: "Phòng 8 người",
+    standard: `Phòng ${capacity} người`,
+    premium: `Phòng ${capacity} người`,
+    deluxe: `Phòng ${capacity} người`,
+  };
+
+  return labels[type] ?? `Phòng ${capacity} người`;
+}
+
 export default function RoomsPage() {
   interface Room {
     id: string;
@@ -31,7 +45,6 @@ export default function RoomsPage() {
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "available">("all");
-  const [applied, setApplied] = useState<string | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
@@ -62,7 +75,7 @@ export default function RoomsPage() {
 
     setApplications(mapped);
 
-    const active = mapped.find((x: any) => x.status === "pending");
+    const active = mapped.find((x: any) => x.status === "pending" || x.status === "approved");
 
     setActiveApp(active || null);
   };
@@ -71,8 +84,6 @@ export default function RoomsPage() {
     loadRooms();
     loadApplications();
   }, []);
-
-  const appliedRoomIds = new Set(applications.map((a: any) => a.roomId));
 
   const filtered = rooms.filter((r) => {
     const matchSearch =
@@ -95,20 +106,8 @@ export default function RoomsPage() {
         roomId,
       });
 
-      // cập nhật UI ngay
-      setRooms((prev) =>
-        prev.map((r) =>
-          r.id === roomId
-            ? {
-                ...r,
-                currentOccupancy: r.currentOccupancy + 1,
-                available: Math.max(0, r.available - 1),
-              }
-            : r,
-        ),
-      );
-
       await loadApplications();
+      await loadRooms();
 
       toast.success("Đăng ký phòng thành công!");
     } catch (err: any) {
@@ -118,25 +117,10 @@ export default function RoomsPage() {
 
   const cancelApplication = async (id: string) => {
     try {
-      const roomId = activeApp?.roomId;
-
       await api.delete(`/DormApplications/${id}`);
 
-      if (roomId) {
-        setRooms((prev) =>
-          prev.map((r) =>
-            r.id === roomId
-              ? {
-                  ...r,
-                  currentOccupancy: Math.max(0, r.currentOccupancy - 1),
-                  available: r.available + 1,
-                }
-              : r,
-          ),
-        );
-      }
-
       await loadApplications();
+      await loadRooms();
 
       toast.success("Đã hủy đơn đăng ký");
     } catch {
@@ -191,7 +175,7 @@ export default function RoomsPage() {
         {filtered.map((room) => {
           const isMyRoom = activeApp?.roomId === room.id;
           const hasActiveApplication = !!activeApp;
-          const isApplied = applications.some((a) => a.roomId === room.id);
+          const isApplied = hasActiveApplication && !isMyRoom;
           const full = room.available === 0;
           return (
             <div
@@ -217,13 +201,9 @@ export default function RoomsPage() {
                   </div>
                 </div>
                 <span
-                  className={`text-xs font-medium px-2 py-1 rounded-full ${
-                    room.roomType === "Nam"
-                      ? "bg-blue-50 text-blue-600"
-                      : "bg-pink-50 text-pink-600"
-                  }`}
+                  className="text-xs font-medium px-2 py-1 rounded-full bg-blue-50 text-blue-600"
                 >
-                  {room.roomType}
+                  {roomTypeLabel(room.roomType, room.capacity)}
                 </span>
               </div>
 
@@ -249,15 +229,17 @@ export default function RoomsPage() {
                 {isMyRoom ? (
                   <div className="flex items-center gap-2">
                     <span className="text-green-600 text-xs font-medium">
-                      Đang đăng ký
+                      {activeApp.status === "approved" ? "Chờ thanh toán" : "Đang đăng ký"}
                     </span>
 
-                    <button
-                      onClick={() => setCancelId(activeApp.id)}
-                      className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:opacity-90"
-                    >
-                      Hủy
-                    </button>
+                    {activeApp.status === "pending" && (
+                      <button
+                        onClick={() => setCancelId(activeApp.id)}
+                        className="text-xs px-2 py-1 bg-red-500 text-white rounded-md hover:opacity-90"
+                      >
+                        Hủy
+                      </button>
+                    )}
                   </div>
                 ) : isApplied ? (
                   <span className="text-gray-500 text-xs">
@@ -265,7 +247,7 @@ export default function RoomsPage() {
                   </span>
                 ) : (
                   <button
-                    disabled={full && !hasActiveApplication}
+                    disabled={full || hasActiveApplication}
                     onClick={() => setRegisterRoomId(room.id)}
                     className="px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg disabled:opacity-40"
                   >

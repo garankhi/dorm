@@ -35,11 +35,11 @@ public partial class AppUser
 
     public DateTime UpdatedAt { get; set; }
 
-    public virtual Contract? Contract { get; set; }
+    public virtual ICollection<Contract> Contracts { get; set; } = new List<Contract>();
 
     public virtual ICollection<DormApplication> DormApplicationReviewedByUsers { get; set; } = new List<DormApplication>();
 
-    public virtual DormApplication? DormApplicationStudent { get; set; }
+    public virtual ICollection<DormApplication> DormApplicationStudents { get; set; } = new List<DormApplication>();
 
     public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 

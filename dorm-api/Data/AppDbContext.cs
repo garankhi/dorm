@@ -168,8 +168,8 @@ public partial class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("contracts_room_id_fkey");
 
-            entity.HasOne(d => d.Student).WithOne(p => p.Contract)
-                .HasForeignKey<Contract>(d => d.StudentId)
+            entity.HasOne(d => d.Student).WithMany(p => p.Contracts)
+                .HasForeignKey(d => d.StudentId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("contracts_student_id_fkey");
         });
@@ -220,8 +220,8 @@ public partial class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("dorm_applications_room_id_fkey");
 
-            entity.HasOne(d => d.Student).WithOne(p => p.DormApplicationStudent)
-                .HasForeignKey<DormApplication>(d => d.StudentId)
+            entity.HasOne(d => d.Student).WithMany(p => p.DormApplicationStudents)
+                .HasForeignKey(d => d.StudentId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("dorm_applications_student_id_fkey");
         });

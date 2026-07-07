@@ -7,7 +7,7 @@ export type AdminRoom = {
   buildingName: string;
   roomNumber: string;
   floor: number;
-  roomType: "standard" | "premium";
+  roomType: "room_2" | "room_4" | "room_6" | "room_8";
   capacity: number;
   currentOccupancy: number;
   pricePerMonth: number;
@@ -27,7 +27,7 @@ export const initialRooms: AdminRoom[] = [
     buildingName: "Nhà A",
     roomNumber: "101",
     floor: 1,
-    roomType: "standard",
+    roomType: "room_4",
     capacity: 4,
     currentOccupancy: 2,
     pricePerMonth: 750000,
@@ -44,7 +44,7 @@ export const initialRooms: AdminRoom[] = [
     buildingName: "Nhà A",
     roomNumber: "102",
     floor: 1,
-    roomType: "standard",
+    roomType: "room_4",
     capacity: 4,
     currentOccupancy: 4,
     pricePerMonth: 750000,
@@ -63,12 +63,12 @@ export const initialRooms: AdminRoom[] = [
     buildingName: "Nhà B",
     roomNumber: "201",
     floor: 2,
-    roomType: "premium",
+    roomType: "room_2",
     capacity: 2,
     currentOccupancy: 0,
     pricePerMonth: 1200000,
     status: "available",
-    description: "Phòng premium 2 người, có khu sinh hoạt riêng.",
+    description: "Phòng 2 người, có khu sinh hoạt riêng.",
     currentStudents: [],
     pendingApplications: 3,
   },
@@ -77,7 +77,7 @@ export const initialRooms: AdminRoom[] = [
     buildingName: "Nhà B",
     roomNumber: "202",
     floor: 2,
-    roomType: "standard",
+    roomType: "room_4",
     capacity: 4,
     currentOccupancy: 3,
     pricePerMonth: 800000,
@@ -95,12 +95,12 @@ export const initialRooms: AdminRoom[] = [
     buildingName: "Nhà C",
     roomNumber: "305",
     floor: 3,
-    roomType: "premium",
+    roomType: "room_2",
     capacity: 2,
     currentOccupancy: 2,
     pricePerMonth: 1350000,
     status: "full",
-    description: "Phòng premium khu yên tĩnh, ưu tiên sinh viên năm cuối.",
+    description: "Phòng 2 người khu yên tĩnh, ưu tiên sinh viên năm cuối.",
     currentStudents: [
       { id: "SV041", fullName: "Bùi Thanh Tùng", studentCode: "SV041" },
       { id: "SV042", fullName: "Nguyễn Quốc Việt", studentCode: "SV042" },
@@ -112,7 +112,7 @@ export const initialRooms: AdminRoom[] = [
     buildingName: "Nhà D",
     roomNumber: "401",
     floor: 4,
-    roomType: "standard",
+    roomType: "room_6",
     capacity: 6,
     currentOccupancy: 0,
     pricePerMonth: 650000,
@@ -163,7 +163,14 @@ export function formatCurrency(value: number) {
 }
 
 export function roomTypeLabel(type: AdminRoom["roomType"]) {
-  return type === "premium" ? "Premium" : "Tiêu chuẩn";
+  const labels: Record<AdminRoom["roomType"], string> = {
+    room_2: "Phòng 2 người",
+    room_4: "Phòng 4 người",
+    room_6: "Phòng 6 người",
+    room_8: "Phòng 8 người",
+  };
+
+  return labels[type] ?? type;
 }
 
 export function emptyBeds(room: AdminRoom) {

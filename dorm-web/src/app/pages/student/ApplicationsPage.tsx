@@ -7,7 +7,7 @@ interface Application {
   room: string;
   submittedAt: string;
   note: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "cancelled";
 }
 
 const statusConfig = {
@@ -28,6 +28,12 @@ const statusConfig = {
     icon: XCircle,
     className: "bg-red-50 text-red-500 border-red-200",
     dot: "bg-red-400",
+  },
+  cancelled: {
+    label: "Đã hủy",
+    icon: XCircle,
+    className: "bg-slate-50 text-slate-600 border-slate-200",
+    dot: "bg-slate-400",
   },
 };
 

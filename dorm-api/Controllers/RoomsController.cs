@@ -30,7 +30,8 @@ public class RoomsController : ControllerBase
                 r.RoomType,
                 r.Capacity,
                 r.CurrentOccupancy,
-                Available = r.Capacity - r.CurrentOccupancy,
+                Reserved = r.Contracts.Count(c => c.Status == "pending_payment"),
+                Available = r.Capacity - r.CurrentOccupancy - r.Contracts.Count(c => c.Status == "pending_payment"),
                 r.PricePerMonth,
                 r.Status,
                 r.Description

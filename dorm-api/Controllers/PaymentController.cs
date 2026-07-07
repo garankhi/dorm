@@ -67,25 +67,106 @@ namespace Dorm.Api.Controllers
             }
 
             var providerTransactionId = payload.Id.ToString(CultureInfo.InvariantCulture);
-            var alreadyProcessed = await _context.Payments.AnyAsync(p =>
-                p.Provider == SepayProvider && p.ProviderTransactionId == providerTransactionId);
+            var existingPayment = await _context.Payments
+                .Include(p => p.Invoice)
+                .ThenInclude(i => i.Contract)
+                .ThenInclude(c => c.Room)
+                .FirstOrDefaultAsync(p => p.Provider == SepayProvider && p.ProviderTransactionId == providerTransactionId);
 
-            if (alreadyProcessed)
+            if (existingPayment is not null)
             {
+                if (existingPayment.Status == "confirmed")
+                {
+                    return Ok(new { success = true });
+                }
+
+                await using var existingTransaction = await _context.Database.BeginTransactionAsync();
+                var duplicateNow = DateTime.UtcNow;
+                var duplicateConfiguredAccount = ConfiguredSepayAccountNumber();
+                var duplicateAccountMatches = MatchesConfiguredAccount(payload.AccountNumber, payload.SubAccount, duplicateConfiguredAccount);
+                var duplicateAmountMatches = payload.TransferAmount == existingPayment.Invoice.Amount;
+                var duplicateCanActivate = CanActivateContract(existingPayment.Invoice, out var duplicateActivationNote);
+
+                if (duplicateAccountMatches && duplicateAmountMatches && duplicateCanActivate)
+                {
+                    existingPayment.Status = "confirmed";
+                    existingPayment.ConfirmedAt = duplicateNow;
+                    existingPayment.AdminNote = null;
+                    existingPayment.UpdatedAt = duplicateNow;
+                    ActivateInvoice(existingPayment.Invoice, duplicateNow);
+
+                    await _context.SaveChangesAsync();
+                    await existingTransaction.CommitAsync();
+                }
+                else
+                {
+                    existingPayment.AdminNote = BuildPendingNote(
+                        duplicateAccountMatches,
+                        duplicateAmountMatches,
+                        existingPayment.Invoice.Amount,
+                        payload.TransferAmount,
+                        duplicateConfiguredAccount,
+                        payload.AccountNumber,
+                        payload.SubAccount);
+                    if (!duplicateCanActivate)
+                    {
+                        existingPayment.AdminNote = string.IsNullOrWhiteSpace(existingPayment.AdminNote)
+                            ? duplicateActivationNote
+                            : $"{existingPayment.AdminNote} {duplicateActivationNote}";
+                    }
+
+                    existingPayment.UpdatedAt = duplicateNow;
+
+                    await _context.SaveChangesAsync();
+                    await existingTransaction.CommitAsync();
+
+                    _logger.LogWarning(
+                        "Sepay payment {ProviderTransactionId} still needs confirmation. AccountMatches={AccountMatches}, AmountMatches={AmountMatches}, CanActivate={CanActivate}, ReceivedAccount={ReceivedAccount}, ReceivedSubAccount={ReceivedSubAccount}, ConfiguredAccount={ConfiguredAccount}",
+                        providerTransactionId,
+                        duplicateAccountMatches,
+                        duplicateAmountMatches,
+                        duplicateCanActivate,
+                        MaskAccount(payload.AccountNumber),
+                        MaskAccount(payload.SubAccount),
+                        MaskAccount(duplicateConfiguredAccount));
+                }
+
                 return Ok(new { success = true });
             }
 
-            var invoice = await _context.Invoices.FirstOrDefaultAsync(i => i.PaymentCode == payload.Code);
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+
+            var invoice = await _context.Invoices
+                .Include(i => i.Contract)
+                .ThenInclude(c => c.Room)
+                .FirstOrDefaultAsync(i => i.PaymentCode == payload.Code);
             if (invoice is null)
             {
                 _logger.LogWarning("Sepay webhook ignored because payment code {PaymentCode} was not found.", payload.Code);
                 return Ok(new { success = true });
             }
 
-            var accountMatches = MatchesConfiguredAccount(payload.AccountNumber, payload.SubAccount);
+            var configuredAccount = ConfiguredSepayAccountNumber();
+            var accountMatches = MatchesConfiguredAccount(payload.AccountNumber, payload.SubAccount, configuredAccount);
             var amountMatches = payload.TransferAmount == invoice.Amount;
             var confirmed = accountMatches && amountMatches;
             var now = DateTime.UtcNow;
+            var pendingNote = BuildPendingNote(
+                accountMatches,
+                amountMatches,
+                invoice.Amount,
+                payload.TransferAmount,
+                configuredAccount,
+                payload.AccountNumber,
+                payload.SubAccount);
+
+            if (confirmed && !CanActivateContract(invoice, out var activationNote))
+            {
+                confirmed = false;
+                pendingNote = string.IsNullOrWhiteSpace(pendingNote)
+                    ? activationNote
+                    : $"{pendingNote} {activationNote}";
+            }
 
             var payment = new Payment
             {
@@ -100,7 +181,7 @@ namespace Dorm.Api.Controllers
                 ProviderTransactionId = providerTransactionId,
                 ProviderReferenceCode = payload.ReferenceCode,
                 ProviderPayload = body,
-                AdminNote = confirmed ? null : BuildPendingNote(accountMatches, amountMatches, invoice.Amount, payload.TransferAmount),
+                AdminNote = confirmed ? null : pendingNote,
                 CreatedAt = now,
                 UpdatedAt = now
             };
@@ -109,8 +190,7 @@ namespace Dorm.Api.Controllers
 
             if (confirmed)
             {
-                invoice.Status = "paid";
-                invoice.UpdatedAt = now;
+                ActivateInvoice(invoice, now);
             }
             else if (invoice.Status == "unpaid")
             {
@@ -118,7 +198,20 @@ namespace Dorm.Api.Controllers
                 invoice.UpdatedAt = now;
             }
 
+            if (!confirmed)
+            {
+                _logger.LogWarning(
+                    "Sepay webhook created pending payment for invoice {InvoiceId}. AccountMatches={AccountMatches}, AmountMatches={AmountMatches}, ReceivedAccount={ReceivedAccount}, ReceivedSubAccount={ReceivedSubAccount}, ConfiguredAccount={ConfiguredAccount}",
+                    invoice.Id,
+                    accountMatches,
+                    amountMatches,
+                    MaskAccount(payload.AccountNumber),
+                    MaskAccount(payload.SubAccount),
+                    MaskAccount(configuredAccount));
+            }
+
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return Ok(new { success = true });
         }
@@ -148,9 +241,62 @@ namespace Dorm.Api.Controllers
             );
         }
 
-        private bool MatchesConfiguredAccount(string accountNumber, string? subAccount)
+        private static bool CanActivateContract(Invoice invoice, out string pendingNote)
         {
-            var configured = NormalizeAccountNumber(_config["Sepay:AccountNumber"]);
+            pendingNote = string.Empty;
+
+            if (invoice.Contract.Status != "pending_payment")
+            {
+                return true;
+            }
+
+            var room = invoice.Contract.Room;
+
+            if (room.Status is "maintenance" or "inactive")
+            {
+                pendingNote = "Phòng không còn khả dụng tại thời điểm xác nhận thanh toán.";
+                return false;
+            }
+
+            if (room.CurrentOccupancy >= room.Capacity)
+            {
+                pendingNote = "Phòng không còn chỗ tại thời điểm xác nhận thanh toán.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static void ActivateInvoice(Invoice invoice, DateTime now)
+        {
+            invoice.Status = "paid";
+            invoice.UpdatedAt = now;
+
+            if (invoice.Contract.Status != "pending_payment")
+            {
+                return;
+            }
+
+            var room = invoice.Contract.Room;
+
+            invoice.Contract.Status = "active";
+            invoice.Contract.UpdatedAt = now;
+            room.CurrentOccupancy += 1;
+            room.UpdatedAt = now;
+
+            if (room.CurrentOccupancy >= room.Capacity)
+            {
+                room.Status = "full";
+            }
+        }
+
+        private string ConfiguredSepayAccountNumber()
+        {
+            return NormalizeAccountNumber(_config["Sepay:AccountNumber"]);
+        }
+
+        private static bool MatchesConfiguredAccount(string accountNumber, string? subAccount, string configured)
+        {
             if (string.IsNullOrWhiteSpace(configured)) return false;
 
             return NormalizeAccountNumber(accountNumber) == configured
@@ -161,7 +307,7 @@ namespace Dorm.Api.Controllers
         {
             return string.IsNullOrWhiteSpace(accountNumber)
                 ? string.Empty
-                : accountNumber.Replace(" ", string.Empty).Trim();
+                : new string(accountNumber.Where(char.IsDigit).ToArray());
         }
 
         private static DateTime ParsePaidAt(string transactionDate)
@@ -175,13 +321,29 @@ namespace Dorm.Api.Controllers
                 : DateTime.UtcNow;
         }
 
-        private static string BuildPendingNote(bool accountMatches, bool amountMatches, decimal expectedAmount, decimal actualAmount)
+        private static string MaskAccount(string? accountNumber)
+        {
+            var normalized = NormalizeAccountNumber(accountNumber);
+            if (string.IsNullOrWhiteSpace(normalized)) return "(empty)";
+            if (normalized.Length <= 4) return new string('*', normalized.Length);
+
+            return $"{new string('*', normalized.Length - 4)}{normalized[^4..]}";
+        }
+
+        private static string BuildPendingNote(
+            bool accountMatches,
+            bool amountMatches,
+            decimal expectedAmount,
+            decimal actualAmount,
+            string configuredAccount,
+            string receivedAccount,
+            string? receivedSubAccount)
         {
             var notes = new List<string>();
 
             if (!accountMatches)
             {
-                notes.Add("Tài khoản nhận tiền không khớp cấu hình Sepay.");
+                notes.Add($"Tài khoản nhận tiền không khớp cấu hình Sepay. Nhận {MaskAccount(receivedAccount)}, sub {MaskAccount(receivedSubAccount)}, cấu hình {MaskAccount(configuredAccount)}.");
             }
 
             if (!amountMatches)

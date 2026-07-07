@@ -69,7 +69,10 @@ export async function rejectApplication(id: string, adminNote: string) {
         body: JSON.stringify({adminNote}),
     });
 
-    if(!res.ok) throw new Error("Từ chối đơn thất bại");
+    if(!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || "Từ chối đơn thất bại");
+    }
 }
 
 export async function approveApplication(id: string, adminNote: string) {
@@ -79,5 +82,8 @@ export async function approveApplication(id: string, adminNote: string) {
         body: JSON.stringify({adminNote}),
     })
 
-    if (!res.ok) throw new Error("Chấp nhận đơn thất bại");
+    if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || "Chấp nhận đơn thất bại");
+    }
 }

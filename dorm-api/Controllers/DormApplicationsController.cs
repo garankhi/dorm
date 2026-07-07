@@ -36,7 +36,8 @@ public class DormApplicationsController : ControllerBase
                 r.RoomType,
                 r.Capacity,
                 r.CurrentOccupancy,
-                Available = r.Capacity - r.CurrentOccupancy,
+                Reserved = r.Contracts.Count(c => c.Status == "pending_payment"),
+                Available = r.Capacity - r.CurrentOccupancy - r.Contracts.Count(c => c.Status == "pending_payment"),
                 r.PricePerMonth,
                 r.Status,
                 r.Description
@@ -136,30 +137,31 @@ public class DormApplicationsController : ControllerBase
 
     //DELETE api/DormApplications/{id}
     [HttpDelete("{id}")]
-[Authorize]
-public async Task<IActionResult> DeleteApplication(Guid id)
-{
-    var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-              ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+    [Authorize]
+    public async Task<IActionResult> DeleteApplication(Guid id)
+    {
+        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                  ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
 
-    if (!Guid.TryParse(sub, out var studentId))
-        return Unauthorized();
+        if (!Guid.TryParse(sub, out var studentId))
+            return Unauthorized();
 
-    var application = await _db.DormApplications
-        .FirstOrDefaultAsync(x => x.Id == id && x.StudentId == studentId);
+        var application = await _db.DormApplications
+            .FirstOrDefaultAsync(x => x.Id == id && x.StudentId == studentId);
 
-    if (application == null)
-    return NotFound(new { error = "application_not_found" });
+        if (application == null)
+            return NotFound(new { error = "application_not_found" });
 
-if (application.StudentId != studentId)
-    return Forbid();
+        if (application.StudentId != studentId)
+            return Forbid();
 
-    if (application.Status != "pending")
-        return BadRequest(new { error = "cannot_delete_non_pending_application" });
+        if (application.Status != "pending")
+            return BadRequest(new { error = "cannot_cancel_non_pending_application" });
 
-    _db.DormApplications.Remove(application);
-    await _db.SaveChangesAsync();
+        application.Status = "cancelled";
+        application.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
 
-    return NoContent();
-}
+        return Ok(new { success = true });
+    }
 }
