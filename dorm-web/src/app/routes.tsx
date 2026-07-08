@@ -11,6 +11,7 @@ import RoomDetailPage from "./pages/student/RoomDetailPage";
 import ApplicationsPage from "./pages/student/ApplicationsPage";
 import ContractsPage from "./pages/student/ContractsPage";
 import InvoicesPage from "./pages/student/InvoicesPage";
+import MaintenancePage from "./pages/student/MaintenancePage";
 import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
 import AdminRoomsPage from "./pages/admin/AdminRoomsPage";
 
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
       { path: "applications", element: <ApplicationsPage /> },
       { path: "contracts", element: <ContractsPage /> },
       { path: "invoices", element: <InvoicesPage /> },
+      { path: "maintenance", element: <MaintenancePage /> },
     ],
   },
   {

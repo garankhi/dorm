@@ -6,7 +6,7 @@ import {
   ClipboardList,
   FileText,
   Receipt,
-  Sparkles,
+  Wrench,
 } from "lucide-react";
 
 const cards = [
@@ -51,13 +51,12 @@ const cards = [
     iconColor: "text-[#3b82f6]",
   },
   {
-    icon: Sparkles,
-    label: "Tính năng sắp có",
-    desc: "Đang phát triển...",
-    to: null,
-    color: "bg-muted text-muted-foreground",
-    iconColor: "text-muted-foreground",
-    disabled: true,
+    icon: Wrench,
+    label: "Báo hư hỏng",
+    desc: "Báo cáo sự cố phòng KTX",
+    to: "/student/maintenance",
+    color: "bg-[#fff0f6] text-[#b92c70]",
+    iconColor: "text-[#e93d82]",
   },
 ];
 
