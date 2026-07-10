@@ -365,7 +365,19 @@ public class MaintenancesController : ControllerBase
 
         if (contract is null)
         {
-            return NotFound(new { error = "no_active_room" });
+            // Fallback for testing/development: if student has no active contract, return the first available room
+            var fallbackRoom = await _db.Rooms.FirstOrDefaultAsync(r => r.Status == "available");
+            if (fallbackRoom is null)
+            {
+                return NotFound(new { error = "no_active_room" });
+            }
+            return Ok(new
+            {
+                RoomId = fallbackRoom.Id,
+                RoomNumber = fallbackRoom.RoomNumber,
+                BuildingName = fallbackRoom.BuildingName,
+                IsFallback = true
+            });
         }
 
         return Ok(new

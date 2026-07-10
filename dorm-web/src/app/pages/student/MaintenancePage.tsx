@@ -368,7 +368,12 @@ export default function MaintenancePage() {
       setProofPreview(null);
     } catch (err: any) {
       console.error(err);
-      showToast(err?.response?.data?.error || "Gửi yêu cầu thất bại.", "error");
+      const errorMsg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Gửi yêu cầu thất bại.";
+      showToast(errorMsg, "error");
     }
   };
 
