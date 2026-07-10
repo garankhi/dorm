@@ -165,10 +165,7 @@ export default function MaintenancePage() {
   const [loadingRoom, setLoadingRoom] = useState(true);
   const [loadingTickets, setLoadingTickets] = useState(true);
   
-  // Simulator states
-  const [hasRoomReal, setHasRoomReal] = useState(false);
-  const [simulatedHasRoom, setSimulatedHasRoom] = useState<boolean | null>(null);
-  const hasRoom = simulatedHasRoom !== null ? simulatedHasRoom : hasRoomReal;
+  const [hasRoom, setHasRoom] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"all" | "active" | "closed">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -223,10 +220,10 @@ export default function MaintenancePage() {
       try {
         const roomRes = await api.get("/maintenances/active-room");
         setRoomInfo(roomRes.data);
-        setHasRoomReal(true);
+        setHasRoom(true);
       } catch (err: any) {
         setRoomInfo(null);
-        setHasRoomReal(false);
+        setHasRoom(false);
       }
 
       // Load tickets list
@@ -535,7 +532,7 @@ export default function MaintenancePage() {
         ))}
       </div>
 
-      {/* Header & Simulator Panel */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
@@ -544,29 +541,6 @@ export default function MaintenancePage() {
           <p className="text-sm text-muted-foreground mt-1">
             Gửi yêu cầu sửa chữa cơ sở vật chất phòng KTX và trao đổi trực tiếp với kỹ thuật viên.
           </p>
-        </div>
-
-        {/* State Simulator Switch (Helpful for demo review) */}
-        <div className="bg-white border border-border p-3 rounded-2xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${hasRoom ? "bg-green-500" : "bg-red-500"}`} />
-            <div>
-              <p className="text-xs font-semibold text-foreground">Giả lập trạng thái phân phòng</p>
-              <p className="text-[10px] text-muted-foreground">
-                {hasRoom ? "Đang có phòng lưu trú" : "Không có phòng lưu trú"}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => setSimulatedHasRoom(simulatedHasRoom === null ? !hasRoomReal : !simulatedHasRoom)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition active:scale-95 ${
-              hasRoom
-                ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
-                : "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100"
-            }`}
-          >
-            {hasRoom ? "Giả lập Không Phòng" : "Giả lập Có Phòng"}
-          </button>
         </div>
       </div>
 
