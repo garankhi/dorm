@@ -26,6 +26,12 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<Invoice> Invoices { get; set; }
 
+    public virtual DbSet<Maintenance> Maintenances { get; set; }
+
+    public virtual DbSet<MaintenanceAttachment> MaintenanceAttachments { get; set; }
+
+    public virtual DbSet<MaintenanceHistory> MaintenanceHistories { get; set; }
+
     public virtual DbSet<Payment> Payments { get; set; }
 
     public virtual DbSet<Room> Rooms { get; set; }
@@ -224,6 +230,122 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.StudentId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("dorm_applications_student_id_fkey");
+        });
+
+        modelBuilder.Entity<Maintenance>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("maintenances_pkey");
+
+            entity.ToTable("maintenances");
+
+            entity.HasIndex(e => e.Status, "maintenances_status_idx");
+            entity.HasIndex(e => e.StudentId, "maintenances_student_idx");
+            entity.HasIndex(e => e.RoomId, "maintenances_room_idx");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.AssignedAdminId).HasColumnName("assigned_admin_id");
+            entity.Property(e => e.ConfirmedAt).HasColumnName("confirmed_at");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.Description).HasColumnName("description");
+            entity.Property(e => e.InternalNote).HasColumnName("internal_note");
+            entity.Property(e => e.IssueType).HasColumnName("issue_type");
+            entity.Property(e => e.RejectionReason).HasColumnName("rejection_reason");
+            entity.Property(e => e.ResolvedAt).HasColumnName("resolved_at");
+            entity.Property(e => e.RoomId).HasColumnName("room_id");
+            entity.Property(e => e.RoomUnderMaintenance).HasColumnName("room_under_maintenance");
+            entity.Property(e => e.Severity)
+                .HasDefaultValueSql("'medium'::text")
+                .HasColumnName("severity");
+            entity.Property(e => e.Status)
+                .HasDefaultValueSql("'submitted'::text")
+                .HasColumnName("status");
+            entity.Property(e => e.StudentId).HasColumnName("student_id");
+            entity.Property(e => e.SubmittedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("submitted_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Student).WithMany(p => p.Maintenances)
+                .HasForeignKey(d => d.StudentId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("maintenances_student_id_fkey");
+
+            entity.HasOne(d => d.Room).WithMany(p => p.Maintenances)
+                .HasForeignKey(d => d.RoomId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("maintenances_room_id_fkey");
+
+            entity.HasOne(d => d.AssignedAdmin).WithMany()
+                .HasForeignKey(d => d.AssignedAdminId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("maintenances_assigned_admin_id_fkey");
+        });
+
+        modelBuilder.Entity<MaintenanceAttachment>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("maintenance_attachments_pkey");
+
+            entity.ToTable("maintenance_attachments");
+
+            entity.HasIndex(e => e.MaintenanceId, "maintenance_attachments_maintenance_idx");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.FileName).HasColumnName("file_name");
+            entity.Property(e => e.MaintenanceId).HasColumnName("maintenance_id");
+            entity.Property(e => e.MimeType).HasColumnName("mime_type");
+            entity.Property(e => e.StoragePath).HasColumnName("storage_path");
+            entity.Property(e => e.UploadedByUserId).HasColumnName("uploaded_by_user_id");
+
+            entity.HasOne(d => d.Maintenance).WithMany(p => p.Attachments)
+                .HasForeignKey(d => d.MaintenanceId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("maintenance_attachments_maintenance_id_fkey");
+
+            entity.HasOne(d => d.UploadedByUser).WithMany(p => p.MaintenanceAttachments)
+                .HasForeignKey(d => d.UploadedByUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("maintenance_attachments_uploaded_by_user_id_fkey");
+        });
+
+        modelBuilder.Entity<MaintenanceHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("maintenance_histories_pkey");
+
+            entity.ToTable("maintenance_histories");
+
+            entity.HasIndex(e => e.MaintenanceId, "maintenance_histories_maintenance_idx");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.ActorRole).HasColumnName("actor_role");
+            entity.Property(e => e.ActorUserId).HasColumnName("actor_user_id");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.MaintenanceId).HasColumnName("maintenance_id");
+            entity.Property(e => e.Message).HasColumnName("message");
+
+            entity.HasOne(d => d.Maintenance).WithMany(p => p.History)
+                .HasForeignKey(d => d.MaintenanceId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("maintenance_histories_maintenance_id_fkey");
+
+            entity.HasOne(d => d.ActorUser).WithMany(p => p.MaintenanceHistories)
+                .HasForeignKey(d => d.ActorUserId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("maintenance_histories_actor_user_id_fkey");
         });
 
         modelBuilder.Entity<Invoice>(entity =>

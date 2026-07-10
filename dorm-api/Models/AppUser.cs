@@ -43,6 +43,12 @@ public partial class AppUser
 
     public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 
+    public virtual ICollection<Maintenance> Maintenances { get; set; } = new List<Maintenance>();
+
+    public virtual ICollection<MaintenanceAttachment> MaintenanceAttachments { get; set; } = new List<MaintenanceAttachment>();
+
+    public virtual ICollection<MaintenanceHistory> MaintenanceHistories { get; set; } = new List<MaintenanceHistory>();
+
     public virtual ICollection<Payment> PaymentConfirmedByUsers { get; set; } = new List<Payment>();
 
     public virtual ICollection<Payment> PaymentStudents { get; set; } = new List<Payment>();

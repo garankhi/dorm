@@ -13,6 +13,7 @@ import ContractsPage from "./pages/student/ContractsPage";
 import InvoicesPage from "./pages/student/InvoicesPage";
 import MaintenancePage from "./pages/student/MaintenancePage";
 import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
+import AdminMaintenancesPage from "./pages/admin/AdminMaintenancesPage";
 import AdminRoomsPage from "./pages/admin/AdminRoomsPage";
 
 function RequireStudent({ children }: { children: React.ReactNode }) {
@@ -68,6 +69,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="applications" replace /> },
       { path: "applications", element: <AdminApplicationsPage /> },
+      { path: "maintenances", element: <AdminMaintenancesPage /> },
       { path: "rooms", element: <AdminRoomsPage /> },
     ],
   },
