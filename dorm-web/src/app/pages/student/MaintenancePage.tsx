@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   Wrench,
   Plus,
@@ -14,51 +14,86 @@ import {
   Trash2,
   Building,
   Check,
-  Filter,
   Search,
   Calendar,
-  MapPin,
   Eye,
   Info,
-  ChevronRight,
 } from "lucide-react";
+import api from "../../api/dorm";
 import { getCurrentUser } from "../../auth";
 
 // --- Interfaces ---
 interface Comment {
   id: string;
-  sender: "student" | "admin";
-  senderName: string;
-  content: string;
-  sentAt: string;
-  imageUrl?: string;
+  actorRole: "student" | "admin" | "system";
+  message: string;
+  createdAt: string;
 }
 
-type TicketStatus = "submitted" | "inprogress" | "resolved" | "reopened" | "closed" | "cancelled";
-type TicketSeverity = "normal" | "urgent" | "critical";
+type TicketStatus = "submitted" | "triaged" | "in_progress" | "resolved" | "closed" | "rejected" | "reopened";
+type TicketSeverity = "low" | "medium" | "high" | "critical";
 
 interface MaintenanceTicket {
   id: string;
-  room: string;
+  studentId: string;
+  studentName: string;
+  roomId: string;
+  roomNumber: string;
+  buildingName: string;
   issueType: string;
-  location: string;
   severity: TicketSeverity;
-  description: string;
   status: TicketStatus;
-  sentDate: string;
-  preferredTime?: string;
-  proofUrl?: string;
-  comments: Comment[];
+  description: string;
+  internalNote?: string;
+  rejectionReason?: string;
+  roomUnderMaintenance: boolean;
+  submittedAt: string;
+  resolvedAt?: string | null;
+  confirmedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  attachments?: {
+    id: string;
+    fileName: string;
+    storagePath: string;
+    mimeType?: string | null;
+    createdAt: string;
+  }[];
 }
 
+// --- Value Mappings ---
+const ISSUE_TYPE_MAP: Record<string, string> = {
+  "Điện": "electrical",
+  "Nước": "water",
+  "Internet": "internet",
+  "Vệ sinh": "cleaning",
+  "Nội thất": "furniture",
+  "Khác": "other",
+};
+
+const ISSUE_TYPE_REV_MAP: Record<string, string> = {
+  electrical: "Điện",
+  water: "Nước",
+  internet: "Internet",
+  cleaning: "Vệ sinh",
+  furniture: "Nội thất",
+  security: "Bảo vệ",
+  other: "Khác",
+};
+
 // --- Status Styles & Labels ---
-const statusConfig = {
+const statusConfig: Record<TicketStatus, { label: string; className: string; dot: string }> = {
   submitted: {
     label: "Đã gửi",
     className: "bg-blue-50 text-blue-600 border-blue-200",
     dot: "bg-blue-500",
   },
-  inprogress: {
+  triaged: {
+    label: "Đã tiếp nhận",
+    className: "bg-indigo-50 text-indigo-600 border-indigo-200",
+    dot: "bg-indigo-500",
+  },
+  in_progress: {
     label: "Đang sửa chữa",
     className: "bg-amber-50 text-amber-600 border-amber-200",
     dot: "bg-amber-500",
@@ -67,6 +102,11 @@ const statusConfig = {
     label: "Đã xử lý (Chờ xác nhận)",
     className: "bg-green-50 text-green-600 border-green-200",
     dot: "bg-green-500",
+  },
+  rejected: {
+    label: "Bị từ chối",
+    className: "bg-red-50 text-red-600 border-red-200",
+    dot: "bg-red-500",
   },
   reopened: {
     label: "Chưa đạt (Mở lại)",
@@ -78,20 +118,19 @@ const statusConfig = {
     className: "bg-slate-50 text-slate-500 border-slate-200",
     dot: "bg-slate-400",
   },
-  cancelled: {
-    label: "Đã hủy",
-    className: "bg-rose-50 text-rose-500 border-rose-200",
-    dot: "bg-rose-400",
-  },
 };
 
-const severityConfig = {
-  normal: {
-    label: "Bình thường",
+const severityConfig: Record<TicketSeverity, { label: string; className: string }> = {
+  low: {
+    label: "Thấp",
     className: "bg-slate-100 text-slate-700 border-slate-200",
   },
-  urgent: {
-    label: "Cần sớm",
+  medium: {
+    label: "Trung bình",
+    className: "bg-blue-100 text-blue-700 border-blue-200",
+  },
+  high: {
+    label: "Cao",
     className: "bg-orange-100 text-orange-700 border-orange-200",
   },
   critical: {
@@ -100,134 +139,44 @@ const severityConfig = {
   },
 };
 
-// --- Mock Initial Data ---
-const initialTickets: MaintenanceTicket[] = [
-  {
-    id: "REQ-8915",
-    room: "Phòng A-102",
-    issueType: "Điện",
-    location: "Trần nhà chính",
-    severity: "urgent",
-    description: "Bóng đèn tuýp LED ở trần chính phòng bị nhấp nháy liên tục rồi tắt hẳn, trong phòng hiện tại rất tối.",
-    status: "submitted",
-    sentDate: "08/07/2026 21:00",
-    preferredTime: "Cả ngày thứ 5 và thứ 6",
-    comments: [],
-  },
-  {
-    id: "REQ-8902",
-    room: "Phòng A-102",
-    issueType: "Nước",
-    location: "Nhà vệ sinh",
-    severity: "critical",
-    description: "Vòi xịt bồn vệ sinh rò rỉ nước liên tục từ khớp nối ở chân vòi, làm nước chảy tràn ra sàn nhà vệ sinh gây trơn trượt nguy hiểm.",
-    status: "resolved",
-    sentDate: "07/07/2026 09:30",
-    preferredTime: "Chiều thứ 3, từ 14h - 17h",
-    proofUrl: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&auto=format&fit=crop&q=60",
-    comments: [
-      {
-        id: "c1",
-        sender: "student",
-        senderName: "Nguyễn Văn A",
-        content: "Em gửi kèm ảnh chỗ bị nứt ở khớp ren nối vòi xịt ạ. Nước chảy khá mạnh nên em tạm thời phải khóa van tổng.",
-        sentAt: "07/07/2026 09:32",
-        imageUrl: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800&auto=format&fit=crop&q=60",
-      },
-      {
-        id: "c2",
-        sender: "admin",
-        senderName: "Kỹ Thuật Viên (Vương)",
-        content: "Chào em, anh đã tiếp nhận yêu cầu. Chiều nay tầm 15h anh qua thay dây vòi xịt mới và kiểm tra van nước nhé.",
-        sentAt: "07/07/2026 11:15",
-      },
-      {
-        id: "c3",
-        sender: "admin",
-        senderName: "Kỹ Thuật Viên (Vương)",
-        content: "Anh đã qua thay vòi xịt nước inox mới và siết lại van cao su chống rò rỉ. Anh chuyển trạng thái Resolved, em kiểm tra lại rồi bấm xác nhận giúp anh nhé.",
-        sentAt: "07/07/2026 15:40",
-      },
-    ],
-  },
-  {
-    id: "REQ-8891",
-    room: "Phòng A-102",
-    issueType: "Internet",
-    location: "Bàn học",
-    severity: "normal",
-    description: "Mạng Wifi ký túc xá chập chờn, thường xuyên bị rớt mạng và báo 'No internet' từ lúc 20h đến 23h đêm.",
-    status: "inprogress",
-    sentDate: "06/07/2026 15:45",
-    preferredTime: "Sau 18:00 hàng ngày",
-    comments: [
-      {
-        id: "c4",
-        sender: "student",
-        senderName: "Nguyễn Văn A",
-        content: "Cứ đến giờ cao điểm học bài tối là mạng không thể kết nối nổi, mong IT hỗ trợ reset hoặc kiểm tra cục phát ở hành lang tầng 1 ạ.",
-        sentAt: "06/07/2026 15:47",
-      },
-      {
-        id: "c5",
-        sender: "admin",
-        senderName: "Hệ thống IT (Duy)",
-        content: "IT đã kiểm tra cục phát AP hành lang dãy A1. Nhận thấy lượng truy cập tải cao gây nghẽn băng thông. Đang lên phương án phân bổ lại cấu hình kênh phát và giới hạn băng thông từng user.",
-        sentAt: "07/07/2026 08:30",
-      },
-    ],
-  },
-  {
-    id: "REQ-8810",
-    room: "Phòng A-102",
-    issueType: "Nội thất",
-    location: "Giường ngủ",
-    severity: "normal",
-    description: "Thanh nan chắn gỗ giường tầng trên bị nứt một đường dài, khi nằm nghe tiếng cọt kẹt lớn sợ bị gãy đổ.",
-    status: "closed",
-    sentDate: "30/06/2026 10:00",
-    comments: [
-      {
-        id: "c6",
-        sender: "student",
-        senderName: "Nguyễn Văn A",
-        content: "Thanh gỗ bị nứt dọc thân giường gác lửng bên phải ạ.",
-        sentAt: "30/06/2026 10:02",
-      },
-      {
-        id: "c7",
-        sender: "admin",
-        senderName: "Đội Mộc (Chú Sáu)",
-        content: "Chú đã qua thay thanh nan gỗ sồi mới chắc chắn hơn cho cháu rồi nhé.",
-        sentAt: "01/07/2026 14:20",
-      },
-      {
-        id: "c8",
-        sender: "student",
-        senderName: "Nguyễn Văn A",
-        content: "Dạ giường nằm chắc chắn êm lắm rồi ạ, con cảm ơn chú Sáu nhiều.",
-        sentAt: "01/07/2026 18:00",
-      },
-    ],
-  },
-];
+// --- Parse Details helper ---
+const parseDescription = (desc: string) => {
+  const locMatch = desc.match(/\[Vị trí:\s*([^\]]+)\]/);
+  const timeMatch = desc.match(/\[Thời gian:\s*([^\]]+)\]/);
+  
+  let cleanDesc = desc;
+  if (locMatch || timeMatch) {
+    cleanDesc = desc.replace(/\[Vị trí:\s*[^\]]+\]/, "").replace(/\[Thời gian:\s*[^\]]+\]/, "").trim();
+  }
+  
+  return {
+    location: locMatch ? locMatch[1] : "Chưa xác định",
+    preferredTime: timeMatch ? timeMatch[1] : "Cả ngày",
+    description: cleanDesc,
+  };
+};
 
 export default function MaintenancePage() {
   const user = getCurrentUser();
 
   // --- States ---
-  const [tickets, setTickets] = useState<MaintenanceTicket[]>(() => {
-    const saved = localStorage.getItem(`dorm_maintenance_tickets_${user?.email}`);
-    return saved ? JSON.parse(saved) : initialTickets;
-  });
-  const [hasRoom, setHasRoom] = useState(true); // Toggle to simulate "No Room" state
+  const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
+  const [roomInfo, setRoomInfo] = useState<{ roomId: string; roomNumber: string; buildingName: string } | null>(null);
+  const [loadingRoom, setLoadingRoom] = useState(true);
+  const [loadingTickets, setLoadingTickets] = useState(true);
+  
+  // Simulator states
+  const [hasRoomReal, setHasRoomReal] = useState(false);
+  const [simulatedHasRoom, setSimulatedHasRoom] = useState<boolean | null>(null);
+  const hasRoom = simulatedHasRoom !== null ? simulatedHasRoom : hasRoomReal;
+
   const [activeTab, setActiveTab] = useState<"all" | "active" | "closed">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Create Form State
   const [issueType, setIssueType] = useState("Điện");
   const [location, setLocation] = useState("Cửa");
-  const [severity, setSeverity] = useState<TicketSeverity>("normal");
+  const [severity, setSeverity] = useState<TicketSeverity>("medium");
   const [description, setDescription] = useState("");
   const [preferredTime, setPreferredTime] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
@@ -235,6 +184,8 @@ export default function MaintenancePage() {
 
   // Detail Modal State
   const [selectedTicket, setSelectedTicket] = useState<MaintenanceTicket | null>(null);
+  const [selectedTicketComments, setSelectedTicketComments] = useState<Comment[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [commentFile, setCommentFile] = useState<File | null>(null);
   const [commentPreview, setCommentPreview] = useState<string | null>(null);
@@ -262,17 +213,70 @@ export default function MaintenancePage() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // --- Persistence ---
-  useEffect(() => {
-    localStorage.setItem(`dorm_maintenance_tickets_${user?.email}`, JSON.stringify(tickets));
-  }, [tickets, user]);
+  // --- API Loading Hooks ---
+  const fetchRoomAndTickets = async () => {
+    try {
+      setLoadingRoom(true);
+      setLoadingTickets(true);
 
-  // Scroll to bottom of chat
+      // Detect active room
+      try {
+        const roomRes = await api.get("/maintenances/active-room");
+        setRoomInfo(roomRes.data);
+        setHasRoomReal(true);
+      } catch (err: any) {
+        setRoomInfo(null);
+        setHasRoomReal(false);
+      }
+
+      // Load tickets list
+      const ticketsRes = await api.get("/maintenances");
+      setTickets(ticketsRes.data);
+    } catch (err: any) {
+      console.error("Error fetching data:", err);
+      showToast("Lỗi tải thông tin từ máy chủ.", "error");
+    } finally {
+      setLoadingRoom(false);
+      setLoadingTickets(false);
+    }
+  };
+
+  useEffect(() => {
+    void fetchRoomAndTickets();
+  }, []);
+
+  // Fetch detail and history logs when selectedTicket changes
+  const loadTicketDetail = async (ticketId: string) => {
+    try {
+      setLoadingDetail(true);
+      const [detailRes, historyRes] = await Promise.all([
+        api.get(`/maintenances/${ticketId}`),
+        api.get(`/maintenances/${ticketId}/history`),
+      ]);
+      setSelectedTicket(detailRes.data);
+      setSelectedTicketComments(detailRes.data.attachments ? [
+        ...historyRes.data,
+        ...detailRes.data.attachments.map((att: any) => ({
+          id: att.id,
+          actorRole: att.uploadedByUserId === detailRes.data.studentId ? "student" : "admin",
+          message: `Gửi tệp đính kèm: ${att.fileName}`,
+          createdAt: att.createdAt,
+          imageUrl: att.storagePath
+        }))
+      ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : historyRes.data);
+    } catch (err: any) {
+      console.error(err);
+      showToast("Không thể tải chi tiết sự cố.", "error");
+    } finally {
+      setLoadingDetail(false);
+    }
+  };
+
   useEffect(() => {
     if (selectedTicket) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [selectedTicket?.comments, selectedTicket]);
+  }, [selectedTicketComments, selectedTicket]);
 
   // --- Toast Helper ---
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
@@ -319,7 +323,7 @@ export default function MaintenancePage() {
   };
 
   // Submit Ticket Form
-  const handleSubmitTicket = (e: React.FormEvent) => {
+  const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!hasRoom) {
@@ -332,103 +336,74 @@ export default function MaintenancePage() {
       return;
     }
 
-    const newTicketId = `REQ-${Math.floor(1000 + Math.random() * 9000)}`;
-    const newTicket: MaintenanceTicket = {
-      id: newTicketId,
-      room: "Phòng A-102",
-      issueType,
-      location,
-      severity,
-      description: description.trim(),
-      status: "submitted",
-      sentDate: new Date().toLocaleString("vi-VN", { hour12: false }),
-      preferredTime: preferredTime.trim() || "Cả ngày",
-      proofUrl: proofPreview || undefined,
-      comments: proofPreview ? [
-        {
-          id: `c-init-${Date.now()}`,
-          sender: "student",
-          senderName: user?.name || "Sinh viên",
-          content: `Ảnh minh chứng đính kèm lúc tạo yêu cầu: ${description.trim()}`,
-          sentAt: new Date().toLocaleString("vi-VN", { hour12: false }),
-          imageUrl: proofPreview,
-        }
-      ] : [],
-    };
+    try {
+      const roomIdToUse = roomInfo?.roomId || "00000000-0000-0000-0000-000000000000";
+      const payload = {
+        roomId: roomIdToUse,
+        issueType: ISSUE_TYPE_MAP[issueType] || "other",
+        severity,
+        description: `[Vị trí: ${location}] [Thời gian: ${preferredTime.trim() || "Cả ngày"}]\n${description.trim()}`,
+      };
 
-    setTickets((prev) => [newTicket, ...prev]);
-    showToast(`Đã gửi yêu cầu báo hỏng ${newTicketId} thành công!`, "success");
+      const res = await api.post("/maintenances", payload);
+      const newTicketId = res.data.id;
 
-    // Reset Form
-    setDescription("");
-    setPreferredTime("");
-    setProofFile(null);
-    setProofPreview(null);
+      if (proofFile) {
+        const formData = new FormData();
+        formData.append("file", proofFile);
+        await api.post(`/maintenances/${newTicketId}/attachments`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+
+      showToast(`Đã gửi yêu cầu báo hỏng thành công!`, "success");
+      
+      // Reload data
+      await fetchRoomAndTickets();
+
+      // Reset Form
+      setDescription("");
+      setPreferredTime("");
+      setProofFile(null);
+      setProofPreview(null);
+    } catch (err: any) {
+      console.error(err);
+      showToast(err?.response?.data?.error || "Gửi yêu cầu thất bại.", "error");
+    }
   };
 
   // Post Comment
-  const handlePostComment = (e: React.FormEvent) => {
+  const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTicket) return;
-    if (!newComment.trim() && !commentPreview) return;
+    if (!newComment.trim() && !commentFile) return;
 
-    const newCommentObj: Comment = {
-      id: `c-${Date.now()}`,
-      sender: "student",
-      senderName: user?.name || "Sinh viên",
-      content: newComment.trim(),
-      sentAt: new Date().toLocaleString("vi-VN", { hour12: false }),
-      imageUrl: commentPreview || undefined,
-    };
-
-    // Update tickets state
-    const updatedTickets = tickets.map((t) => {
-      if (t.id === selectedTicket.id) {
-        const updatedComments = [...t.comments, newCommentObj];
-        const updatedT = { ...t, comments: updatedComments };
-        // Sync selectedTicket too
-        setSelectedTicket(updatedT);
-        return updatedT;
-      }
-      return t;
-    });
-
-    setTickets(updatedTickets);
-    setNewComment("");
-    setCommentFile(null);
-    setCommentPreview(null);
-    showToast("Đã gửi bình luận.", "success");
-
-    // Simulate Admin Auto-reply after 2.5 seconds
-    const ticketIdToReply = selectedTicket.id;
-    setTimeout(() => {
-      setTickets((currentTickets) => {
-        return currentTickets.map((t) => {
-          if (t.id === ticketIdToReply && t.status !== "closed" && t.status !== "cancelled") {
-            const adminReply: Comment = {
-              id: `c-admin-${Date.now()}`,
-              sender: "admin",
-              senderName: "BQL Ký Túc Xá (Tự động)",
-              content: "Xin chào! Ban Quản lý đã nhận được bình luận bổ sung của bạn. Kỹ thuật viên phụ trách sửa chữa sẽ phản hồi hoặc liên hệ trực tiếp cho bạn sớm nhất có thể.",
-              sentAt: new Date().toLocaleString("vi-VN", { hour12: false }),
-            };
-            const finalComments = [...t.comments, adminReply];
-            const finalT = { ...t, comments: finalComments };
-
-            // Update selectedTicket if it is still open and matches
-            setSelectedTicket((currentSel) => {
-              if (currentSel && currentSel.id === ticketIdToReply) {
-                return finalT;
-              }
-              return currentSel;
-            });
-
-            return finalT;
-          }
-          return t;
+    try {
+      if (newComment.trim()) {
+        await api.post(`/maintenances/${selectedTicket.id}/comments`, {
+          message: newComment.trim(),
         });
-      });
-    }, 2500);
+      }
+
+      if (commentFile) {
+        const formData = new FormData();
+        formData.append("file", commentFile);
+        await api.post(`/maintenances/${selectedTicket.id}/attachments`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+
+      showToast("Đã gửi phản hồi.", "success");
+      setNewComment("");
+      setCommentFile(null);
+      setCommentPreview(null);
+
+      // Reload ticket details
+      await loadTicketDetail(selectedTicket.id);
+    } catch (err: any) {
+      console.error(err);
+      showToast("Không thể gửi phản hồi.", "error");
+    }
   };
 
   // Trigger Cancellation Custom Dialog
@@ -438,7 +413,7 @@ export default function MaintenancePage() {
       type: "cancel",
       ticketId,
       title: "Hủy yêu cầu báo hỏng",
-      message: `Bạn có chắc chắn muốn hủy yêu cầu báo hỏng ${ticketId}? Hành động này không thể hoàn tác.`,
+      message: `Bạn có chắc chắn muốn hủy yêu cầu sửa chữa này không? Hành động này sẽ đóng vĩnh viễn yêu cầu.`,
       inputValue: "",
     });
   };
@@ -457,134 +432,76 @@ export default function MaintenancePage() {
   };
 
   // Unified Custom Dialog Submission Handler
-  const handleDialogSubmit = () => {
+  const handleDialogSubmit = async () => {
     const { type, ticketId, inputValue } = customDialog;
-    if (type === "cancel") {
-      const updated = tickets.map((t) => {
-        if (t.id === ticketId) {
-          const updatedT = { ...t, status: "cancelled" as TicketStatus };
-          if (selectedTicket?.id === ticketId) {
-            setSelectedTicket(updatedT);
-          }
-          return updatedT;
+    try {
+      if (type === "cancel") {
+        await api.post(`/maintenances/${ticketId}/cancel`);
+        showToast("Đã hủy yêu cầu sửa chữa thành công.", "success");
+      } else if (type === "reopen") {
+        if (!inputValue.trim()) {
+          setCustomDialog((prev) => ({ ...prev, errorText: "Vui lòng nhập lý do chưa khắc phục xong." }));
+          return;
         }
-        return t;
-      });
-      setTickets(updated);
-      showToast(`Đã hủy yêu cầu sửa chữa ${ticketId}`, "info");
-      setCustomDialog((prev) => ({ ...prev, isOpen: false }));
-    } else if (type === "reopen") {
-      if (!inputValue.trim()) {
-        setCustomDialog((prev) => ({ ...prev, errorText: "Vui lòng nhập lý do chưa khắc phục xong." }));
-        return;
+        await api.post(`/maintenances/${ticketId}/reopen`, {
+          message: inputValue.trim(),
+        });
+        showToast("Đã báo lỗi chưa hoàn thành và mở lại yêu cầu.", "success");
       }
-      const updated = tickets.map((t) => {
-        if (t.id === ticketId) {
-          const studentComment: Comment = {
-            id: `c-reopen-${Date.now()}`,
-            sender: "student",
-            senderName: user?.name || "Sinh viên",
-            content: `⚠ Báo cáo lỗi chưa khắc phục xong. Yêu cầu sửa lại. Lý do: ${inputValue.trim()}`,
-            sentAt: new Date().toLocaleString("vi-VN", { hour12: false }),
-          };
-          const updatedT = {
-            ...t,
-            status: "reopened" as TicketStatus,
-            comments: [...t.comments, studentComment],
-          };
-          if (selectedTicket?.id === ticketId) {
-            setSelectedTicket(updatedT);
-          }
-          return updatedT;
-        }
-        return t;
-      });
-      setTickets(updated);
-      showToast(`Đã mở lại yêu cầu sửa chữa ${ticketId}`, "info");
+
       setCustomDialog((prev) => ({ ...prev, isOpen: false }));
+      
+      // Reload detail and list
+      await fetchRoomAndTickets();
+      if (selectedTicket?.id === ticketId) {
+        await loadTicketDetail(ticketId);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err?.response?.data?.error || "Thao tác thất bại.", "error");
     }
   };
 
   // Close Ticket (Resolved -> Closed)
-  const handleConfirmResolved = (ticketId: string) => {
-    const updated = tickets.map((t) => {
-      if (t.id === ticketId) {
-        // Add final comment indicating resolved
-        const systemComment: Comment = {
-          id: `c-sys-${Date.now()}`,
-          sender: "student",
-          senderName: user?.name || "Sinh viên",
-          content: "✓ Xác nhận: Thiết bị đã được sửa xong hoạt động tốt. Đóng yêu cầu.",
-          sentAt: new Date().toLocaleString("vi-VN", { hour12: false }),
-        };
-        const updatedT = {
-          ...t,
-          status: "closed" as TicketStatus,
-          comments: [...t.comments, systemComment],
-        };
-        if (selectedTicket?.id === ticketId) {
-          setSelectedTicket(updatedT);
-        }
-        return updatedT;
-      }
-      return t;
-    });
-    setTickets(updated);
-    showToast(`Đã đóng yêu cầu sửa chữa ${ticketId}`, "success");
-  };
+  const handleConfirmResolved = async (ticketId: string) => {
+    try {
+      await api.post(`/maintenances/${ticketId}/confirm`);
+      showToast("Đã xác nhận sửa xong và đóng yêu cầu.", "success");
 
-  // Reopen Ticket (Resolved -> Reopened)
-  const handleReopenTicket = (ticketId: string, reason: string) => {
-    if (!reason.trim()) {
-      showToast("Vui lòng ghi rõ lý do chưa hoàn thành.", "error");
-      return;
+      // Reload
+      await fetchRoomAndTickets();
+      if (selectedTicket?.id === ticketId) {
+        await loadTicketDetail(ticketId);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(err?.response?.data?.error || "Thao tác thất bại.", "error");
     }
-
-    const updated = tickets.map((t) => {
-      if (t.id === ticketId) {
-        const studentComment: Comment = {
-          id: `c-reopen-${Date.now()}`,
-          sender: "student",
-          senderName: user?.name || "Sinh viên",
-          content: `⚠ Báo cáo lỗi chưa khắc phục xong. Yêu cầu sửa lại. Lý do: ${reason.trim()}`,
-          sentAt: new Date().toLocaleString("vi-VN", { hour12: false }),
-        };
-        const updatedT = {
-          ...t,
-          status: "reopened" as TicketStatus,
-          comments: [...t.comments, studentComment],
-        };
-        if (selectedTicket?.id === ticketId) {
-          setSelectedTicket(updatedT);
-        }
-        return updatedT;
-      }
-      return t;
-    });
-    setTickets(updated);
-    showToast(`Đã mở lại yêu cầu sửa chữa ${ticketId}`, "info");
   };
 
   // --- Filtering ---
-  const filteredTickets = tickets.filter((t) => {
-    // Search query match (id, issue type, location, description)
-    const matchesSearch =
-      t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.issueType.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.description.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredTickets = useMemo(() => {
+    return tickets.filter((t) => {
+      const parsed = parseDescription(t.description);
+      const matchesSearch =
+        t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.ticketCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.issueType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ISSUE_TYPE_REV_MAP[t.issueType]?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        parsed.description.toLowerCase().includes(searchQuery.toLowerCase());
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    // Tab match
-    if (activeTab === "active") {
-      return ["submitted", "inprogress", "resolved", "reopened"].includes(t.status);
-    }
-    if (activeTab === "closed") {
-      return ["closed", "cancelled"].includes(t.status);
-    }
-    return true;
-  });
+      // Tab match
+      if (activeTab === "active") {
+        return ["submitted", "triaged", "in_progress", "resolved", "reopened"].includes(t.status);
+      }
+      if (activeTab === "closed") {
+        return ["closed", "rejected"].includes(t.status);
+      }
+      return true;
+    });
+  }, [tickets, activeTab, searchQuery]);
 
   return (
     <div className="p-6 md:p-8 max-w-6xl mx-auto relative min-h-screen">
@@ -636,7 +553,7 @@ export default function MaintenancePage() {
             </div>
           </div>
           <button
-            onClick={() => setHasRoom(!hasRoom)}
+            onClick={() => setSimulatedHasRoom(simulatedHasRoom === null ? !hasRoomReal : !simulatedHasRoom)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition active:scale-95 ${
               hasRoom
                 ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100"
@@ -649,18 +566,18 @@ export default function MaintenancePage() {
       </div>
 
       {/* Active Room Guard Banner */}
-      {hasRoom ? (
+      {loadingRoom ? (
+        <div className="bg-slate-100 animate-pulse rounded-2xl h-16 w-full mb-8" />
+      ) : hasRoom ? (
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex items-center gap-3.5 mb-8">
           <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
             <Building size={20} />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs text-primary font-medium tracking-wide uppercase">Phòng lưu trú hiện tại</p>
-            <p className="text-base font-semibold text-foreground mt-0.5">Phòng A-102</p>
-          </div>
-          <div className="text-right hidden sm:block">
-            <p className="text-xs text-muted-foreground">Hợp đồng liên quan</p>
-            <p className="text-sm font-medium text-foreground">HĐ #CON-20260705</p>
+            <p className="text-base font-semibold text-foreground mt-0.5">
+              {roomInfo ? `Phòng ${roomInfo.buildingName}-${roomInfo.roomNumber}` : "Phòng A-102"}
+            </p>
           </div>
         </div>
       ) : (
@@ -725,13 +642,15 @@ export default function MaintenancePage() {
               {/* Row 2: Severity */}
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Mức độ ưu tiên</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {(["normal", "urgent", "critical"] as TicketSeverity[]).map((level) => {
+                <div className="grid grid-cols-4 gap-2">
+                  {(["low", "medium", "high", "critical"] as TicketSeverity[]).map((level) => {
                     const active = severity === level;
                     let colorStyles = "";
-                    if (level === "normal") {
+                    if (level === "low") {
                       colorStyles = active ? "border-slate-500 bg-slate-50 text-slate-900" : "hover:bg-slate-50 border-border text-muted-foreground";
-                    } else if (level === "urgent") {
+                    } else if (level === "medium") {
+                      colorStyles = active ? "border-blue-500 bg-blue-50 text-blue-900" : "hover:bg-blue-50/50 border-border text-muted-foreground";
+                    } else if (level === "high") {
                       colorStyles = active ? "border-amber-500 bg-amber-50 text-amber-900" : "hover:bg-amber-50/50 border-border text-muted-foreground";
                     } else {
                       colorStyles = active ? "border-red-500 bg-red-50 text-red-950" : "hover:bg-red-50/50 border-border text-muted-foreground";
@@ -743,10 +662,11 @@ export default function MaintenancePage() {
                         type="button"
                         disabled={!hasRoom}
                         onClick={() => setSeverity(level)}
-                        className={`border rounded-xl py-2 px-1 text-xs font-medium text-center transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${colorStyles}`}
+                        className={`border rounded-xl py-2 text-[10px] font-semibold text-center transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${colorStyles}`}
                       >
-                        {level === "normal" && "Bình thường"}
-                        {level === "urgent" && "Cần sớm"}
+                        {level === "low" && "Thấp"}
+                        {level === "medium" && "T.Bình"}
+                        {level === "high" && "Cao"}
                         {level === "critical" && "Khẩn cấp"}
                       </button>
                     );
@@ -763,7 +683,7 @@ export default function MaintenancePage() {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Vui lòng mô tả chi tiết vị trí và biểu hiện sự cố để kỹ thuật viên dễ xác định lỗi..."
-                  className="w-full bg-[#f5f6fa] border border-transparent rounded-xl p-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:outline-none transition resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-[#f5f6fa] border border-transparent rounded-xl p-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:outline-none transition resize-none disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -778,7 +698,7 @@ export default function MaintenancePage() {
                   value={preferredTime}
                   onChange={(e) => setPreferredTime(e.target.value)}
                   placeholder="Ví dụ: Rảnh chiều T3 và T5 từ 13h-17h..."
-                  className="w-full bg-[#f5f6fa] border border-transparent rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-[#f5f6fa] border border-transparent rounded-xl px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:outline-none transition disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -862,7 +782,7 @@ export default function MaintenancePage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm mã yêu cầu, sự cố..."
+                placeholder="Tìm sự cố..."
                 className="w-full bg-[#f5f6fa] border border-transparent rounded-xl pl-9 pr-4 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:bg-white focus:outline-none transition"
               />
               {searchQuery && (
@@ -877,7 +797,13 @@ export default function MaintenancePage() {
           </div>
 
           {/* Ticket Listing */}
-          {filteredTickets.length === 0 ? (
+          {loadingTickets ? (
+            <div className="space-y-4">
+              {[1, 2].map((i) => (
+                <div key={i} className="bg-slate-100 animate-pulse rounded-2xl h-24 w-full" />
+              ))}
+            </div>
+          ) : filteredTickets.length === 0 ? (
             <div className="bg-white rounded-2xl border border-border py-16 text-center text-muted-foreground shadow-sm">
               <Wrench size={32} className="mx-auto mb-3 opacity-30 text-slate-400" />
               <p className="text-sm font-medium">Không tìm thấy yêu cầu sửa chữa nào</p>
@@ -887,22 +813,26 @@ export default function MaintenancePage() {
             <div className="space-y-3.5">
               {filteredTickets.map((ticket) => {
                 const statusInfo = statusConfig[ticket.status] || statusConfig.submitted;
-                const severityInfo = severityConfig[ticket.severity] || severityConfig.normal;
+                const severityInfo = severityConfig[ticket.severity] || severityConfig.medium;
+                const parsed = parseDescription(ticket.description);
 
                 return (
                   <div
                     key={ticket.id}
-                    onClick={() => setSelectedTicket(ticket)}
+                    onClick={() => {
+                      setSelectedTicket(ticket);
+                      void loadTicketDetail(ticket.id);
+                    }}
                     className="bg-white rounded-2xl border border-border p-4 hover:shadow-md hover:border-slate-300 transition duration-200 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 group"
                   >
                     <div className="space-y-1.5 flex-1 min-w-0">
                       {/* Top Info line */}
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] font-bold text-slate-400 font-mono tracking-wider">
-                          {ticket.id}
+                          REQ-{ticket.id.slice(0, 5).toUpperCase()}
                         </span>
                         <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
-                          {ticket.issueType} ({ticket.location})
+                          {ISSUE_TYPE_REV_MAP[ticket.issueType] || ticket.issueType} ({parsed.location})
                         </span>
                         <span className={`text-[10px] font-semibold border px-2 py-0.5 rounded-full ${severityInfo.className}`}>
                           {severityInfo.label}
@@ -910,29 +840,24 @@ export default function MaintenancePage() {
                       </div>
 
                       {/* Main description */}
-                      <p className="text-sm text-foreground font-medium truncate group-hover:text-primary transition-colors">
-                        {ticket.description}
+                      <p className="text-xs text-foreground font-medium truncate group-hover:text-primary transition-colors">
+                        {parsed.description}
                       </p>
 
                       {/* Room & date line */}
-                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <Building size={12} /> {ticket.room}
+                          <Building size={12} /> Phòng {ticket.buildingName}-{ticket.roomNumber}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Clock size={12} /> Gửi ngày: {ticket.sentDate}
+                          <Clock size={12} /> Gửi ngày: {new Date(ticket.submittedAt).toLocaleDateString("vi-VN")}
                         </span>
-                        {ticket.comments.length > 0 && (
-                          <span className="flex items-center gap-1 text-primary font-medium">
-                            <MessageSquare size={12} /> {ticket.comments.length} thảo luận
-                          </span>
-                        )}
                       </div>
                     </div>
 
                     {/* Status badge & detail click action */}
                     <div className="flex items-center justify-between md:justify-end gap-3.5 border-t md:border-t-0 border-slate-100 pt-3 md:pt-0 shrink-0">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full border ${statusInfo.className}`}>
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-full border ${statusInfo.className}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
                         {statusInfo.label}
                       </span>
@@ -957,13 +882,13 @@ export default function MaintenancePage() {
             <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-slate-50/50">
               <div>
                 <div className="flex items-center gap-2.5">
-                  <span className="text-xs font-bold text-slate-400 font-mono tracking-wider">{selectedTicket.id}</span>
+                  <span className="text-xs font-bold text-slate-400 font-mono tracking-wider">REQ-{selectedTicket.id.slice(0, 5).toUpperCase()}</span>
                   <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${statusConfig[selectedTicket.status]?.className}`}>
                     {statusConfig[selectedTicket.status]?.label}
                   </span>
                 </div>
-                <h3 className="text-base font-semibold text-foreground mt-1">
-                  Yêu cầu: {selectedTicket.issueType} ở {selectedTicket.location}
+                <h3 className="text-sm font-semibold text-foreground mt-1">
+                  Yêu cầu: {ISSUE_TYPE_REV_MAP[selectedTicket.issueType] || selectedTicket.issueType} ở {parseDescription(selectedTicket.description).location}
                 </h3>
               </div>
               <button
@@ -990,7 +915,7 @@ export default function MaintenancePage() {
                   <div>
                     <p className="text-[10px] text-muted-foreground font-medium">Phòng liên quan</p>
                     <p className="text-xs font-semibold text-foreground flex items-center gap-1 mt-0.5">
-                      <Building size={13} className="text-slate-400" /> {selectedTicket.room}
+                      <Building size={13} className="text-slate-400" /> Phòng {selectedTicket.buildingName}-{selectedTicket.roomNumber}
                     </p>
                   </div>
 
@@ -1004,24 +929,33 @@ export default function MaintenancePage() {
                   <div>
                     <p className="text-[10px] text-muted-foreground font-medium">Thời gian liên hệ</p>
                     <p className="text-xs font-medium text-foreground flex items-center gap-1 mt-0.5">
-                      <Calendar size={13} className="text-slate-400" /> {selectedTicket.preferredTime || "Cả ngày"}
+                      <Calendar size={13} className="text-slate-400" /> {parseDescription(selectedTicket.description).preferredTime}
                     </p>
                   </div>
 
                   <div>
                     <p className="text-[10px] text-muted-foreground font-medium">Mô tả sự cố</p>
                     <p className="text-xs text-foreground mt-0.5 leading-relaxed bg-white border border-border p-2.5 rounded-xl">
-                      {selectedTicket.description}
+                      {parseDescription(selectedTicket.description).description}
                     </p>
                   </div>
 
-                  {selectedTicket.proofUrl && (
+                  {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
                     <div>
-                      <p className="text-[10px] text-muted-foreground font-medium">Ảnh minh chứng</p>
-                      <a href={selectedTicket.proofUrl} target="_blank" rel="noreferrer" className="block relative rounded-xl overflow-hidden border border-border w-full h-24 mt-1 bg-slate-50 group hover:opacity-90 transition">
-                        <img src={selectedTicket.proofUrl} alt="Ticket proof" className="w-full h-full object-cover" />
-                        <span className="absolute bottom-1 right-1 bg-black/60 text-[8px] text-white px-1.5 py-0.5 rounded">Click xem lớn</span>
-                      </a>
+                      <p className="text-[10px] text-muted-foreground font-medium">Tệp đính kèm ({selectedTicket.attachments.length})</p>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        {selectedTicket.attachments.map((att) => (
+                          <a
+                            key={att.id}
+                            href={att.storagePath}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block relative rounded-xl overflow-hidden border border-border h-16 bg-slate-100 hover:opacity-90 transition shrink-0"
+                          >
+                            <img src={att.storagePath} alt={att.fileName} className="w-full h-full object-cover" />
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1032,17 +966,14 @@ export default function MaintenancePage() {
                   <div className="space-y-2">
                     {[
                       { step: "submitted", label: "Đã gửi yêu cầu", active: true },
-                      { step: "inprogress", label: "Đang sửa chữa", active: ["inprogress", "resolved", "reopened", "closed"].includes(selectedTicket.status) },
+                      { step: "in_progress", label: "Đang sửa chữa", active: ["in_progress", "resolved", "closed"].includes(selectedTicket.status) },
                       { step: "resolved", label: "Đã xử lý (Chờ xác nhận)", active: ["resolved", "closed"].includes(selectedTicket.status) },
                       { step: "closed", label: "Đã đóng", active: selectedTicket.status === "closed" },
                     ].map((st, idx) => {
-                      const isCancelled = selectedTicket.status === "cancelled" && st.step !== "submitted";
-                      if (isCancelled) return null;
-
                       let checkIconColor = "bg-slate-200 text-slate-400";
                       if (st.active) checkIconColor = "bg-primary text-white";
                       if (selectedTicket.status === "resolved" && st.step === "resolved") checkIconColor = "bg-green-600 text-white animate-bounce";
-                      if (selectedTicket.status === "reopened" && st.step === "inprogress") checkIconColor = "bg-purple-600 text-white";
+                      if (selectedTicket.status === "reopened" && st.step === "in_progress") checkIconColor = "bg-purple-600 text-white";
                       
                       return (
                         <div key={st.step} className="flex items-center gap-2">
@@ -1050,17 +981,17 @@ export default function MaintenancePage() {
                             {st.step === "closed" && selectedTicket.status === "closed" ? <Check size={10} /> : (idx + 1)}
                           </div>
                           <span className={`text-xs ${st.active ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                            {selectedTicket.status === "reopened" && st.step === "inprogress" ? "Mở lại & Đang xử lý" : st.label}
+                            {selectedTicket.status === "reopened" && st.step === "in_progress" ? "Mở lại & Đang xử lý" : st.label}
                           </span>
                         </div>
                       );
                     })}
-                    {selectedTicket.status === "cancelled" && (
+                    {selectedTicket.status === "rejected" && (
                       <div className="flex items-center gap-2">
                         <div className="w-5 h-5 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] shrink-0">
                           <X size={10} />
                         </div>
-                        <span className="text-xs font-semibold text-rose-600">Đã hủy yêu cầu</span>
+                        <span className="text-xs font-semibold text-rose-600">Bị từ chối sửa chữa</span>
                       </div>
                     )}
                   </div>
@@ -1097,8 +1028,8 @@ export default function MaintenancePage() {
                     </div>
                   )}
 
-                  {/* Closed / Cancelled text */}
-                  {(selectedTicket.status === "closed" || selectedTicket.status === "cancelled") && (
+                  {/* Closed / Rejected text */}
+                  {(selectedTicket.status === "closed" || selectedTicket.status === "rejected") && (
                     <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 text-center text-xs text-slate-500">
                       Yêu cầu sửa chữa này đã kết thúc xử lý. 
                       Không thể chỉnh sửa hoặc bình luận.
@@ -1112,28 +1043,47 @@ export default function MaintenancePage() {
                 {/* Conversation Title */}
                 <div className="px-4 py-2 bg-slate-50 border-b border-border flex items-center gap-1.5 shrink-0">
                   <MessageSquare size={13} className="text-primary" />
-                  <span className="text-xs font-semibold text-foreground">Hộp thư trao đổi (Ticket Ticket)</span>
+                  <span className="text-xs font-semibold text-foreground">Hộp thư trao đổi & Nhật ký</span>
                 </div>
 
                 {/* Comment Thread Content */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-50/30">
-                  {selectedTicket.comments.length === 0 ? (
+                  {loadingDetail ? (
+                    <div className="text-center py-10 text-muted-foreground flex flex-col items-center justify-center">
+                      <div className="w-5 h-5 rounded-full border-2 border-primary border-t-transparent animate-spin mb-2" />
+                      <p className="text-xs">Đang tải cuộc trò chuyện...</p>
+                    </div>
+                  ) : selectedTicketComments.length === 0 ? (
                     <div className="text-center py-10 text-muted-foreground flex flex-col items-center justify-center">
                       <MessageSquare size={24} className="opacity-20 mb-2" />
-                      <p className="text-xs font-medium">Chưa có thảo luận nào</p>
+                      <p className="text-xs font-medium">Chưa có hoạt động nào</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">Sinh viên và Ban quản lý có thể trao đổi ý kiến bên dưới.</p>
                     </div>
                   ) : (
-                    selectedTicket.comments.map((comment) => {
-                      const isAdmin = comment.sender === "admin";
+                    selectedTicketComments.map((comment, index) => {
+                      const isSystem = comment.actorRole === "system";
+                      const isAdmin = comment.actorRole === "admin";
+                      
+                      if (isSystem) {
+                        return (
+                          <div key={comment.id || index} className="text-center my-2 text-[10px] text-muted-foreground italic font-medium bg-slate-100 py-1.5 px-3 rounded-full max-w-[80%] mx-auto">
+                            {comment.message} ({new Date(comment.createdAt).toLocaleString("vi-VN")})
+                          </div>
+                        );
+                      }
+
                       return (
                         <div
-                          key={comment.id}
+                          key={comment.id || index}
                           className={`flex flex-col max-w-[85%] ${isAdmin ? "mr-auto" : "ml-auto"}`}
                         >
                           <div className={`flex items-center gap-1.5 mb-1 px-1 ${isAdmin ? "justify-start" : "justify-end"}`}>
-                            <span className="text-[10px] font-semibold text-slate-700">{comment.senderName}</span>
-                            <span className="text-[9px] text-slate-400">{comment.sentAt}</span>
+                            <span className="text-[10px] font-semibold text-slate-700">
+                              {isAdmin ? "Ban Quản lý KTX" : "Sinh viên"}
+                            </span>
+                            <span className="text-[9px] text-slate-400">
+                              {new Date(comment.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
                           </div>
                           
                           <div
@@ -1143,7 +1093,7 @@ export default function MaintenancePage() {
                                 : "bg-primary text-white border-transparent shadow-sm"
                             }`}
                           >
-                            <p className="whitespace-pre-line leading-relaxed">{comment.content}</p>
+                            <p className="whitespace-pre-line leading-relaxed">{comment.message}</p>
                             
                             {comment.imageUrl && (
                               <a href={comment.imageUrl} target="_blank" rel="noreferrer" className="block mt-2 rounded-lg overflow-hidden max-w-full max-h-36 border border-black/5 bg-slate-900/5">
@@ -1160,7 +1110,7 @@ export default function MaintenancePage() {
 
                 {/* Comment Input Bar */}
                 <div className="p-3 border-t border-border bg-white shrink-0">
-                  {selectedTicket.status !== "closed" && selectedTicket.status !== "cancelled" ? (
+                  {selectedTicket.status !== "closed" && selectedTicket.status !== "rejected" ? (
                     <form onSubmit={handlePostComment} className="space-y-2">
                       
                       {/* Image preview for comment */}
@@ -1207,7 +1157,7 @@ export default function MaintenancePage() {
                         {/* Send button */}
                         <button
                           type="submit"
-                          disabled={!newComment.trim() && !commentPreview}
+                          disabled={!newComment.trim() && !commentFile}
                           className="p-2.5 bg-primary disabled:bg-slate-100 text-white disabled:text-slate-400 rounded-xl transition hover:bg-primary/95 active:scale-95 shrink-0"
                         >
                           <Send size={15} />
@@ -1216,7 +1166,7 @@ export default function MaintenancePage() {
                     </form>
                   ) : (
                     <p className="text-[10px] text-center text-muted-foreground">
-                      Không thể trả lời vì yêu cầu sửa chữa đã đóng hoặc đã hủy.
+                      Không thể trả lời vì yêu cầu sửa chữa đã đóng hoặc bị từ chối.
                     </p>
                   )}
                 </div>
@@ -1225,6 +1175,7 @@ export default function MaintenancePage() {
           </div>
         </div>
       )}
+
       {/* Custom Confirmation / Prompt Dialog Modal */}
       {customDialog.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">

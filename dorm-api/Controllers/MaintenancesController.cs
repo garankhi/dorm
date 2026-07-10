@@ -162,6 +162,7 @@ public class MaintenancesController : ControllerBase
         var entity = await _db.Maintenances
             .Include(x => x.Student)
             .Include(x => x.Room)
+            .Include(x => x.Attachments)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (entity is null) return NotFound(new { error = "maintenance_not_found" });
@@ -190,7 +191,15 @@ public class MaintenancesController : ControllerBase
             ResolvedAt = entity.ResolvedAt,
             ConfirmedAt = entity.ConfirmedAt,
             CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
+            UpdatedAt = entity.UpdatedAt,
+            Attachments = entity.Attachments.Select(a => new MaintenanceAttachmentResponse
+            {
+                Id = a.Id,
+                FileName = a.FileName,
+                StoragePath = a.StoragePath,
+                MimeType = a.MimeType,
+                CreatedAt = a.CreatedAt
+            }).ToList()
         });
     }
 
@@ -341,5 +350,140 @@ public class MaintenancesController : ControllerBase
             MimeType = attachment.MimeType,
             CreatedAt = attachment.CreatedAt
         });
+    }
+
+    [HttpGet("active-room")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> GetActiveRoom()
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var contract = await _db.Contracts
+            .Include(c => c.Room)
+            .FirstOrDefaultAsync(c => c.StudentId == userId.Value && c.Status == "active");
+
+        if (contract is null)
+        {
+            return NotFound(new { error = "no_active_room" });
+        }
+
+        return Ok(new
+        {
+            RoomId = contract.RoomId,
+            RoomNumber = contract.Room.RoomNumber,
+            BuildingName = contract.Room.BuildingName
+        });
+    }
+
+    [HttpPost("{id:guid}/comments")]
+    [Authorize]
+    public async Task<IActionResult> AddComment(Guid id, [FromBody] AddCommentRequest request)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var maintenance = await _db.Maintenances.FirstOrDefaultAsync(x => x.Id == id);
+        if (maintenance is null) return NotFound(new { error = "maintenance_not_found" });
+
+        var user = await _db.AppUsers.FindAsync(userId.Value);
+        if (user is null) return Unauthorized();
+
+        if (user.Role == "student" && maintenance.StudentId != userId.Value)
+        {
+            return Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            return BadRequest(new { error = "message_required" });
+        }
+
+        await AddHistoryAsync(id, user.Role, userId.Value, request.Message.Trim());
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("{id:guid}/cancel")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> Cancel(Guid id)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var entity = await _db.Maintenances.FindAsync(id);
+        if (entity is null) return NotFound(new { error = "maintenance_not_found" });
+
+        if (entity.StudentId != userId.Value) return Forbid();
+
+        if (entity.Status != "submitted")
+        {
+            return BadRequest(new { error = "cannot_cancel_already_processed" });
+        }
+
+        entity.Status = "closed";
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await AddHistoryAsync(id, "student", userId.Value, "Sinh viên hủy yêu cầu sửa chữa");
+
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("{id:guid}/confirm")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> Confirm(Guid id)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var entity = await _db.Maintenances.FindAsync(id);
+        if (entity is null) return NotFound(new { error = "maintenance_not_found" });
+
+        if (entity.StudentId != userId.Value) return Forbid();
+
+        if (entity.Status != "resolved")
+        {
+            return BadRequest(new { error = "ticket_not_resolved" });
+        }
+
+        entity.Status = "closed";
+        entity.ConfirmedAt = DateTime.UtcNow;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await AddHistoryAsync(id, "student", userId.Value, "Sinh viên xác nhận đã sửa xong và đóng yêu cầu");
+
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("{id:guid}/reopen")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> Reopen(Guid id, [FromBody] AddCommentRequest request)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var entity = await _db.Maintenances.FindAsync(id);
+        if (entity is null) return NotFound(new { error = "maintenance_not_found" });
+
+        if (entity.StudentId != userId.Value) return Forbid();
+
+        if (entity.Status != "resolved")
+        {
+            return BadRequest(new { error = "ticket_not_resolved" });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            return BadRequest(new { error = "reason_required" });
+        }
+
+        entity.Status = "reopened";
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await AddHistoryAsync(id, "student", userId.Value, $"⚠ Sinh viên báo lỗi chưa khắc phục xong. Yêu cầu sửa lại. Lý do: {request.Message.Trim()}");
+
+        return Ok(new { success = true });
     }
 }

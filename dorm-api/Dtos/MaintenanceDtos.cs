@@ -40,6 +40,7 @@ public class MaintenanceResponse
     public DateTime? ConfirmedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public List<MaintenanceAttachmentResponse> Attachments { get; set; } = new();
 }
 
 public class MaintenanceHistoryResponse
@@ -57,4 +58,9 @@ public class MaintenanceAttachmentResponse
     public string StoragePath { get; set; } = "";
     public string? MimeType { get; set; }
     public DateTime CreatedAt { get; set; }
+}
+
+public class AddCommentRequest
+{
+    public string Message { get; set; } = null!;
 }
