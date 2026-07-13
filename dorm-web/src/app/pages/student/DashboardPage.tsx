@@ -9,9 +9,20 @@ import {
   FileText,
   Receipt,
   Wrench,
+  LucideIcon,
 } from "lucide-react";
 
-const cards = [
+interface CardItem {
+  icon: LucideIcon;
+  label: string;
+  desc: string;
+  to?: string;
+  color: string;
+  iconColor: string;
+  disabled?: boolean;
+}
+
+const cards: CardItem[] = [
   {
     icon: User,
     label: "Hồ sơ",
