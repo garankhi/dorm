@@ -57,6 +57,7 @@ public class MaintenanceAttachmentResponse
     public string FileName { get; set; } = "";
     public string StoragePath { get; set; } = "";
     public string? MimeType { get; set; }
+    public Guid? UploadedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

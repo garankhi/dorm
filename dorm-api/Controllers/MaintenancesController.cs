@@ -198,6 +198,7 @@ public class MaintenancesController : ControllerBase
                 FileName = a.FileName,
                 StoragePath = a.StoragePath,
                 MimeType = a.MimeType,
+                UploadedByUserId = a.UploadedByUserId,
                 CreatedAt = a.CreatedAt
             }).ToList()
         });
@@ -348,6 +349,7 @@ public class MaintenancesController : ControllerBase
             FileName = attachment.FileName,
             StoragePath = attachment.StoragePath,
             MimeType = attachment.MimeType,
+            UploadedByUserId = attachment.UploadedByUserId,
             CreatedAt = attachment.CreatedAt
         });
     }
