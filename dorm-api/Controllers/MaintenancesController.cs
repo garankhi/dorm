@@ -20,10 +20,16 @@ namespace Dorm.Api.Controllers;
 public class MaintenancesController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly string _supabaseUrl;
+    private readonly string _supabaseKey;
+    private readonly string _supabaseBucket;
 
-    public MaintenancesController(AppDbContext db)
+    public MaintenancesController(AppDbContext db, IConfiguration config)
     {
         _db = db;
+        _supabaseUrl = config["Supabase:Url"] ?? "";
+        _supabaseKey = config["Supabase:Key"] ?? "";
+        _supabaseBucket = config["Supabase:BucketName"] ?? "maintenances";
     }
 
     private Guid? CurrentUserId()
@@ -48,6 +54,27 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
     }
 
+    private async Task<string> UploadToSupabaseAsync(string filePath, string mimeType, Stream fileStream)
+    {
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_supabaseKey}");
+        client.DefaultRequestHeaders.Add("apiKey", _supabaseKey);
+
+        var requestUrl = $"{_supabaseUrl.TrimEnd('/')}/storage/v1/object/{_supabaseBucket}/{filePath}";
+
+        using var content = new StreamContent(fileStream);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
+
+        var response = await client.PostAsync(requestUrl, content);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Supabase storage upload failed: {response.StatusCode} - {errorBody}");
+        }
+
+        // Return public URL
+        return $"{_supabaseUrl.TrimEnd('/')}/storage/v1/object/public/{_supabaseBucket}/{filePath}";
+    }
     [HttpGet]
     [Authorize]
     public async Task<ActionResult<List<MaintenanceResponse>>> List([FromQuery] string? status)
@@ -162,6 +189,7 @@ public class MaintenancesController : ControllerBase
         var entity = await _db.Maintenances
             .Include(x => x.Student)
             .Include(x => x.Room)
+            .Include(x => x.Attachments)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (entity is null) return NotFound(new { error = "maintenance_not_found" });
@@ -190,7 +218,16 @@ public class MaintenancesController : ControllerBase
             ResolvedAt = entity.ResolvedAt,
             ConfirmedAt = entity.ConfirmedAt,
             CreatedAt = entity.CreatedAt,
-            UpdatedAt = entity.UpdatedAt
+            UpdatedAt = entity.UpdatedAt,
+            Attachments = entity.Attachments.Select(a => new MaintenanceAttachmentResponse
+            {
+                Id = a.Id,
+                FileName = a.FileName,
+                StoragePath = a.StoragePath,
+                MimeType = a.MimeType,
+                UploadedByUserId = a.UploadedByUserId,
+                CreatedAt = a.CreatedAt
+            }).ToList()
         });
     }
 
@@ -305,24 +342,26 @@ public class MaintenancesController : ControllerBase
             return BadRequest(new { error = "file_required" });
         }
 
-        var uploadsRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "maintenances", id.ToString());
-        Directory.CreateDirectory(uploadsRoot);
-
         var extension = Path.GetExtension(file.FileName);
         var safeName = Path.GetFileNameWithoutExtension(file.FileName).Replace(" ", "_");
-        var fileName = $"{safeName}-{Guid.NewGuid():N}{extension}";
-        var physicalPath = Path.Combine(uploadsRoot, fileName);
+        var fileName = $"{id}/{safeName}-{Guid.NewGuid():N}{extension}";
 
-        await using (var stream = System.IO.File.Create(physicalPath))
+        string publicUrl;
+        try
         {
-            await file.CopyToAsync(stream);
+            using var stream = file.OpenReadStream();
+            publicUrl = await UploadToSupabaseAsync(fileName, file.ContentType, stream);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "supabase_upload_failed", message = ex.Message });
         }
 
         var attachment = new MaintenanceAttachment
         {
             MaintenanceId = id,
             FileName = file.FileName,
-            StoragePath = $"/uploads/maintenances/{id}/{fileName}",
+            StoragePath = publicUrl,
             MimeType = file.ContentType,
             UploadedByUserId = userId.Value,
             CreatedAt = DateTime.UtcNow
@@ -339,7 +378,155 @@ public class MaintenancesController : ControllerBase
             FileName = attachment.FileName,
             StoragePath = attachment.StoragePath,
             MimeType = attachment.MimeType,
+            UploadedByUserId = attachment.UploadedByUserId,
             CreatedAt = attachment.CreatedAt
         });
+    }
+
+    [HttpGet("active-room")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> GetActiveRoom()
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var contract = await _db.Contracts
+            .Include(c => c.Room)
+            .FirstOrDefaultAsync(c => c.StudentId == userId.Value && c.Status == "active");
+
+        if (contract is null)
+        {
+            // Fallback for testing/development: if student has no active contract, return the first available room
+            var fallbackRoom = await _db.Rooms.FirstOrDefaultAsync(r => r.Status == "available");
+            if (fallbackRoom is null)
+            {
+                return NotFound(new { error = "no_active_room" });
+            }
+            return Ok(new
+            {
+                RoomId = fallbackRoom.Id,
+                RoomNumber = fallbackRoom.RoomNumber,
+                BuildingName = fallbackRoom.BuildingName,
+                IsFallback = true
+            });
+        }
+
+        return Ok(new
+        {
+            RoomId = contract.RoomId,
+            RoomNumber = contract.Room.RoomNumber,
+            BuildingName = contract.Room.BuildingName
+        });
+    }
+
+    [HttpPost("{id:guid}/comments")]
+    [Authorize]
+    public async Task<IActionResult> AddComment(Guid id, [FromBody] AddCommentRequest request)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var maintenance = await _db.Maintenances.FirstOrDefaultAsync(x => x.Id == id);
+        if (maintenance is null) return NotFound(new { error = "maintenance_not_found" });
+
+        var user = await _db.AppUsers.FindAsync(userId.Value);
+        if (user is null) return Unauthorized();
+
+        if (user.Role == "student" && maintenance.StudentId != userId.Value)
+        {
+            return Forbid();
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            return BadRequest(new { error = "message_required" });
+        }
+
+        await AddHistoryAsync(id, user.Role, userId.Value, request.Message.Trim());
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("{id:guid}/cancel")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> Cancel(Guid id)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var entity = await _db.Maintenances.FindAsync(id);
+        if (entity is null) return NotFound(new { error = "maintenance_not_found" });
+
+        if (entity.StudentId != userId.Value) return Forbid();
+
+        if (entity.Status != "submitted")
+        {
+            return BadRequest(new { error = "cannot_cancel_already_processed" });
+        }
+
+        entity.Status = "closed";
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await AddHistoryAsync(id, "student", userId.Value, "Sinh viên hủy yêu cầu sửa chữa");
+
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("{id:guid}/confirm")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> Confirm(Guid id)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var entity = await _db.Maintenances.FindAsync(id);
+        if (entity is null) return NotFound(new { error = "maintenance_not_found" });
+
+        if (entity.StudentId != userId.Value) return Forbid();
+
+        if (entity.Status != "resolved")
+        {
+            return BadRequest(new { error = "ticket_not_resolved" });
+        }
+
+        entity.Status = "closed";
+        entity.ConfirmedAt = DateTime.UtcNow;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await AddHistoryAsync(id, "student", userId.Value, "Sinh viên xác nhận đã sửa xong và đóng yêu cầu");
+
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("{id:guid}/reopen")]
+    [Authorize(Policy = "RequireStudent")]
+    public async Task<IActionResult> Reopen(Guid id, [FromBody] AddCommentRequest request)
+    {
+        var userId = CurrentUserId();
+        if (userId is null) return Unauthorized();
+
+        var entity = await _db.Maintenances.FindAsync(id);
+        if (entity is null) return NotFound(new { error = "maintenance_not_found" });
+
+        if (entity.StudentId != userId.Value) return Forbid();
+
+        if (entity.Status != "resolved")
+        {
+            return BadRequest(new { error = "ticket_not_resolved" });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+        {
+            return BadRequest(new { error = "reason_required" });
+        }
+
+        entity.Status = "reopened";
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        await AddHistoryAsync(id, "student", userId.Value, $"⚠ Sinh viên báo lỗi chưa khắc phục xong. Yêu cầu sửa lại. Lý do: {request.Message.Trim()}");
+
+        return Ok(new { success = true });
     }
 }

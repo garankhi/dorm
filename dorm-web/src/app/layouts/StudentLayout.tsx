@@ -13,6 +13,7 @@ import {
   X,
   Building2,
   ArrowLeft,
+  Wrench,
 } from "lucide-react";
 
 const navItems = [
@@ -22,6 +23,7 @@ const navItems = [
   { to: "/student/applications", label: "Đăng ký KTX", icon: ClipboardList, end: false },
   { to: "/student/contracts", label: "Hợp đồng", icon: FileText, end: false },
   { to: "/student/invoices", label: "Hóa đơn", icon: Receipt, end: false },
+  { to: "/student/maintenance", label: "Báo hư hỏng", icon: Wrench, end: false },
 ];
 
 export default function StudentLayout() {
