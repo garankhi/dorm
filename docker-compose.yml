@@ -17,6 +17,9 @@ services:
       Sepay__Bank: ${SEPAY_BANK}
       Sepay__AccountNumber: ${SEPAY_ACCOUNT_NUMBER}
       Sepay__AccountHolder: ${SEPAY_ACCOUNT_HOLDER}
+      Supabase__Url: ${DORM_SUPABASE_URL}
+      Supabase__Key: ${DORM_SUPABASE_KEY}
+      Supabase__BucketName: ${DORM_SUPABASE_BUCKET_NAME}
     expose:
       - "8080"
 
