@@ -7,10 +7,12 @@ import {
   ClipboardList,
   LogOut,
   Menu,
+  Wrench,
 } from "lucide-react";
 
 const navItems = [
   { to: "/admin/applications", label: "Quản lý đơn", icon: ClipboardList, end: false },
+  { to: "/admin/maintenances", label: "Quản lý bảo trì", icon: Wrench, end: false },
   { to: "/admin/rooms", label: "Quản lý phòng", icon: BedDouble, end: false },
 ];
 

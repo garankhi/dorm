@@ -21,3 +21,6 @@ supabase/.temp/
 
 # Next.js build output
 **/.next/
+
+# User uploads
+dorm-api/wwwroot/uploads/

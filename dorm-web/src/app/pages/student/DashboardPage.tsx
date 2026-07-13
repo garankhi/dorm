@@ -1,15 +1,28 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { getCurrentUser } from "../../auth";
+import api from "../../api/dorm";
 import {
   User,
   BedDouble,
   ClipboardList,
   FileText,
   Receipt,
-  Sparkles,
+  Wrench,
+  LucideIcon,
 } from "lucide-react";
 
-const cards = [
+interface CardItem {
+  icon: LucideIcon;
+  label: string;
+  desc: string;
+  to?: string;
+  color: string;
+  iconColor: string;
+  disabled?: boolean;
+}
+
+const cards: CardItem[] = [
   {
     icon: User,
     label: "Hồ sơ",
@@ -51,13 +64,12 @@ const cards = [
     iconColor: "text-[#3b82f6]",
   },
   {
-    icon: Sparkles,
-    label: "Tính năng sắp có",
-    desc: "Đang phát triển...",
-    to: null,
-    color: "bg-muted text-muted-foreground",
-    iconColor: "text-muted-foreground",
-    disabled: true,
+    icon: Wrench,
+    label: "Báo hư hỏng",
+    desc: "Báo cáo sự cố phòng KTX",
+    to: "/student/maintenance",
+    color: "bg-[#fff0f6] text-[#b92c70]",
+    iconColor: "text-[#e93d82]",
   },
 ];
 
@@ -65,6 +77,55 @@ export default function DashboardPage() {
   const user = getCurrentUser();
   const navigate = useNavigate();
   const firstName = user?.name.split(" ").pop() ?? "Sinh viên";
+
+  // --- Live States ---
+  const [roomInfo, setRoomInfo] = useState<{ roomNumber: string; buildingName: string } | null>(null);
+  const [unpaidCount, setUnpaidCount] = useState<number | null>(null);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboardStats = async () => {
+      try {
+        setLoading(true);
+        
+        // 1. Fetch Active Room
+        try {
+          const roomRes = await api.get("/maintenances/active-room");
+          setRoomInfo(roomRes.data);
+        } catch {
+          setRoomInfo(null);
+        }
+
+        // 2. Fetch Invoices
+        try {
+          const invoicesRes = await api.get("/invoices/me");
+          const unpaid = invoicesRes.data.filter(
+            (inv: any) => inv.status === "unpaid" || inv.status === "overdue"
+          ).length;
+          setUnpaidCount(unpaid);
+        } catch {
+          setUnpaidCount(0);
+        }
+
+        // 3. Fetch Applications
+        try {
+          const appsRes = await api.get("/DormApplications/me");
+          const pending = appsRes.data.filter((app: any) => app.status === "pending").length;
+          setPendingCount(pending);
+        } catch {
+          setPendingCount(0);
+        }
+
+      } catch (err) {
+        console.error("Error loading dashboard stats", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadDashboardStats();
+  }, []);
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto">
@@ -82,9 +143,18 @@ export default function DashboardPage() {
       {/* Quick stat strip */}
       <div className="grid grid-cols-3 gap-3 mb-8">
         {[
-          { label: "Phòng hiện tại", value: "P.204A" },
-          { label: "Hóa đơn chưa thanh toán", value: "1" },
-          { label: "Đơn đang xử lý", value: "2" },
+          {
+            label: "Phòng hiện tại",
+            value: loading ? "Đang tải..." : roomInfo ? `${roomInfo.buildingName}-${roomInfo.roomNumber}` : "Chưa có phòng",
+          },
+          {
+            label: "Hóa đơn chưa thanh toán",
+            value: loading ? "Đang tải..." : unpaidCount?.toString() ?? "0",
+          },
+          {
+            label: "Đơn đang xử lý",
+            value: loading ? "Đang tải..." : pendingCount?.toString() ?? "0",
+          },
         ].map((stat) => (
           <div
             key={stat.label}
