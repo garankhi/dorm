@@ -11,7 +11,9 @@ using Dorm.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Dorm.Api.Hubs;
 
 namespace Dorm.Api.Controllers;
 
@@ -23,13 +25,15 @@ public class MaintenancesController : ControllerBase
     private readonly string _supabaseUrl;
     private readonly string _supabaseKey;
     private readonly string _supabaseBucket;
+    private readonly IHubContext<MaintenanceHub> _hubContext;
 
-    public MaintenancesController(AppDbContext db, IConfiguration config)
+    public MaintenancesController(AppDbContext db, IConfiguration config, IHubContext<MaintenanceHub> hubContext)
     {
         _db = db;
         _supabaseUrl = config["Supabase:Url"] ?? "";
         _supabaseKey = config["Supabase:Key"] ?? "";
         _supabaseBucket = config["Supabase:BucketName"] ?? "maintenances";
+        _hubContext = hubContext;
     }
 
     private Guid? CurrentUserId()
@@ -42,16 +46,24 @@ public class MaintenancesController : ControllerBase
 
     private async Task AddHistoryAsync(Guid maintenanceId, string actorRole, Guid? actorUserId, string message)
     {
-        _db.MaintenanceHistories.Add(new MaintenanceHistory
+        var history = new MaintenanceHistory
         {
             MaintenanceId = maintenanceId,
             ActorRole = actorRole,
             ActorUserId = actorUserId,
             Message = message,
             CreatedAt = DateTime.UtcNow
-        });
-
+        };
+        _db.MaintenanceHistories.Add(history);
         await _db.SaveChangesAsync();
+
+        await _hubContext.Clients.Group(maintenanceId.ToString()).SendAsync("ReceiveHistoryItem", new
+        {
+            id = history.Id,
+            actorRole = history.ActorRole,
+            message = history.Message,
+            createdAt = history.CreatedAt
+        });
     }
 
     private async Task<string> UploadToSupabaseAsync(string filePath, string mimeType, Stream fileStream)
@@ -281,6 +293,7 @@ public class MaintenancesController : ControllerBase
         if (messages.Count > 0)
         {
             await AddHistoryAsync(entity.Id, "admin", CurrentUserId(), string.Join("; ", messages));
+            await _hubContext.Clients.Group(entity.Id.ToString()).SendAsync("ReceiveStatusUpdate", new { id = entity.Id, status = entity.Status });
         }
 
         return Ok(new { success = true });
@@ -372,6 +385,15 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, user.Role, userId.Value, $"Đính kèm file {file.FileName}");
+
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveAttachment", new
+        {
+            id = attachment.Id,
+            actorRole = user.Role,
+            message = $"Gửi tệp đính kèm: {attachment.FileName}",
+            createdAt = attachment.CreatedAt,
+            imageUrl = attachment.StoragePath
+        });
 
         return Ok(new MaintenanceAttachmentResponse
         {
@@ -469,6 +491,7 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, "student", userId.Value, "Sinh viên hủy yêu cầu sửa chữa");
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveStatusUpdate", new { id, status = entity.Status });
 
         return Ok(new { success = true });
     }
@@ -496,6 +519,7 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, "student", userId.Value, "Sinh viên xác nhận đã sửa xong và đóng yêu cầu");
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveStatusUpdate", new { id, status = entity.Status });
 
         return Ok(new { success = true });
     }
@@ -527,6 +551,7 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, "student", userId.Value, $"⚠ Sinh viên báo lỗi chưa khắc phục xong. Yêu cầu sửa lại. Lý do: {request.Message.Trim()}");
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveStatusUpdate", new { id, status = entity.Status });
 
         return Ok(new { success = true });
     }

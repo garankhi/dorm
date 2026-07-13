@@ -1,4 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { HubConnectionBuilder } from "@microsoft/signalr";
 import {
   CalendarDays,
   CheckCircle2,
@@ -140,6 +141,83 @@ export default function AdminMaintenancesPage() {
     };
 
     void loadDetail();
+  }, [detailId]);
+
+  useEffect(() => {
+    if (!detailId) return;
+
+    const connection = new HubConnectionBuilder()
+      .withUrl("/hubs/maintenance")
+      .withAutomaticReconnect()
+      .build();
+
+    const startConnection = async () => {
+      try {
+        await connection.start();
+        await connection.invoke("JoinTicketRoom", detailId);
+      } catch (err) {
+        console.error("SignalR connection error (admin): ", err);
+      }
+    };
+
+    void startConnection();
+
+    connection.on("ReceiveHistoryItem", (item: any) => {
+      setHistory((prev) => {
+        if (prev.some((p) => p.id === item.id)) return prev;
+        return [...prev, item];
+      });
+    });
+
+    connection.on("ReceiveAttachment", (item: any) => {
+      setHistory((prev) => {
+        if (prev.some((p) => p.id === item.id)) return prev;
+        return [...prev, item];
+      });
+      setDetail((prevDetail) => {
+        if (!prevDetail || prevDetail.id !== detailId) return prevDetail;
+        const currentAttachments = prevDetail.attachments || [];
+        if (currentAttachments.some((a) => a.id === item.id)) return prevDetail;
+        return {
+          ...prevDetail,
+          attachments: [
+            ...currentAttachments,
+            {
+              id: item.id,
+              fileName: item.message.replace("Gửi tệp đính kèm: ", ""),
+              storagePath: item.imageUrl,
+              createdAt: item.createdAt,
+            }
+          ]
+        };
+      });
+    });
+
+    connection.on("ReceiveStatusUpdate", (update: { id: string; status: any }) => {
+      if (update.id !== detailId) return;
+      setDetail((prevDetail) => {
+        if (!prevDetail) return prevDetail;
+        return { ...prevDetail, status: update.status };
+      });
+      setEditStatus(update.status);
+      setMaintenances((prevList) =>
+        prevList.map((m) => (m.id === update.id ? { ...m, status: update.status } : m))
+      );
+    });
+
+    return () => {
+      const stopConnection = async () => {
+        try {
+          if (connection.state === "Connected") {
+            await connection.invoke("LeaveTicketRoom", detailId);
+            await connection.stop();
+          }
+        } catch (err) {
+          console.error("SignalR stop error (admin): ", err);
+        }
+      };
+      void stopConnection();
+    };
   }, [detailId]);
 
   const buildings = useMemo(
