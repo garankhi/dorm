@@ -33,4 +33,6 @@ public partial class Room
     public virtual ICollection<Contract> Contracts { get; set; } = new List<Contract>();
 
     public virtual ICollection<DormApplication> DormApplications { get; set; } = new List<DormApplication>();
+
+    public virtual ICollection<Maintenance> Maintenances { get; set; } = new List<Maintenance>();
 }
