@@ -42,6 +42,34 @@ export type AdminMaintenanceDetail = AdminMaintenance & {
   attachments?: MaintenanceAttachment[];
 };
 
+export type RoomMaintenanceThreadItem = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  issueType: string;
+  severity: string;
+  status: string;
+  description: string;
+  internalNote?: string | null;
+  rejectionReason?: string | null;
+  roomUnderMaintenance: boolean;
+  submittedAt: string;
+  resolvedAt?: string | null;
+  confirmedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  history: MaintenanceHistoryItem[];
+  attachments: MaintenanceAttachment[];
+};
+
+export type RoomMaintenanceThreadResponse = {
+  roomId: string;
+  roomNumber: string;
+  buildingName: string;
+  roomStatus: string;
+  maintenances: RoomMaintenanceThreadItem[];
+};
+
 export type AdminMaintenanceQuery = {
   status?: string;
 };
@@ -92,6 +120,36 @@ export async function fetchAdminMaintenanceHistory(id: string) {
   }
 
   return (await res.json()) as Promise<MaintenanceHistoryItem[]>;
+}
+
+export async function fetchRoomMaintenanceThread(roomId: string) {
+  const res = await fetch(`/api/maintenances/room/${roomId}/thread`, {
+    headers: authHeader(),
+  });
+
+  if (!res.ok) {
+    throw new Error("Không thể tải hộp trao đổi phòng");
+  }
+
+  return (await res.json()) as Promise<RoomMaintenanceThreadResponse>;
+}
+
+export async function postMaintenanceComment(id: string, message: string) {
+  const res = await fetch(`/api/maintenances/${id}/comments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(),
+    },
+    body: JSON.stringify({ message }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || errorData.message || "Không thể gửi bình luận");
+  }
+
+  return await res.json();
 }
 
 export type UpdateMaintenanceRequest = {

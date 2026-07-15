@@ -1,5 +1,6 @@
 using System.Text;
 using Dorm.Api.Data;
+using Dorm.Api.Hubs;
 using Dorm.Api.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
