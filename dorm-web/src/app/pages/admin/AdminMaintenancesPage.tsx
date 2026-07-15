@@ -360,9 +360,11 @@ export default function AdminMaintenancesPage() {
   };
 
   // Chat feature handlers
-  const loadRoomThread = async (roomId: string) => {
-    setRoomThreadLoading(true);
-    setRoomThreadError("");
+  const loadRoomThread = async (roomId: string, silent = false) => {
+    if (!silent) {
+      setRoomThreadLoading(true);
+      setRoomThreadError("");
+    }
 
     try {
       const data = await fetchRoomMaintenanceThread(roomId);
@@ -373,11 +375,15 @@ export default function AdminMaintenancesPage() {
       });
       setLastThreadRefreshAt(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
     } catch (err: any) {
-      setRoomThreadError(err?.message || "Không thể tải hộp trao đổi phòng");
-      setRoomThread(null);
-      setSelectedThreadMaintenanceId(null);
+      if (!silent) {
+        setRoomThreadError(err?.message || "Không thể tải hộp trao đổi phòng");
+        setRoomThread(null);
+        setSelectedThreadMaintenanceId(null);
+      }
     } finally {
-      setRoomThreadLoading(false);
+      if (!silent) {
+        setRoomThreadLoading(false);
+      }
     }
   };
 
@@ -418,15 +424,33 @@ export default function AdminMaintenancesPage() {
       .configureLogging(LogLevel.None)
       .build();
 
-    connection.start().catch(() => undefined);
+    const startConnection = async () => {
+      try {
+        await connection.start();
+        await connection.invoke("JoinRoom", roomThreadRoomId);
+      } catch (err) {
+        console.error("SignalR connection error (room thread): ", err);
+      }
+    };
+
+    void startConnection();
+
     connection.on("ReceiveMaintenanceUpdate", async () => {
-      await loadRoomThread(roomThreadRoomId);
+      await loadRoomThread(roomThreadRoomId, true);
     });
-    connection.invoke("JoinRoom", roomThreadRoomId).catch(() => undefined);
 
     return () => {
-      connection.invoke("LeaveRoom", roomThreadRoomId).catch(() => undefined);
-      connection.stop().catch(() => undefined);
+      const stopConnection = async () => {
+        try {
+          if (connection.state === HubConnectionState.Connected) {
+            await connection.invoke("LeaveRoom", roomThreadRoomId);
+            await connection.stop();
+          }
+        } catch (err) {
+          console.error("SignalR stop error (room thread): ", err);
+        }
+      };
+      void stopConnection();
     };
   }, [roomThreadRoomId]);
 
