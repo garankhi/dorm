@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import api from "../../api/dorm";
 import { getCurrentUser } from "../../auth";
+import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
 
 // --- Interfaces ---
 interface Comment {
@@ -28,6 +29,7 @@ interface Comment {
   actorRole: "student" | "admin" | "system";
   message: string;
   createdAt: string;
+  imageUrl?: string;
 }
 
 type TicketStatus = "submitted" | "triaged" | "in_progress" | "resolved" | "closed" | "rejected" | "reopened";
@@ -275,6 +277,83 @@ export default function MaintenancePage() {
     }
   }, [selectedTicketComments, selectedTicket]);
 
+  useEffect(() => {
+    if (!selectedTicket?.id) return;
+
+    const ticketId = selectedTicket.id;
+    const connection = new HubConnectionBuilder()
+      .withUrl("/hubs/maintenance")
+      .withAutomaticReconnect()
+      .build();
+
+    const startConnection = async () => {
+      try {
+        await connection.start();
+        await connection.invoke("JoinTicketRoom", ticketId);
+      } catch (err) {
+        console.error("SignalR connection error: ", err);
+      }
+    };
+
+    void startConnection();
+
+    connection.on("ReceiveHistoryItem", (item: any) => {
+      setSelectedTicketComments((prev) => {
+        if (prev.some((p) => p.id === item.id)) return prev;
+        return [...prev, item];
+      });
+    });
+
+    connection.on("ReceiveAttachment", (item: any) => {
+      setSelectedTicketComments((prev) => {
+        if (prev.some((p) => p.id === item.id)) return prev;
+        return [...prev, item];
+      });
+      setSelectedTicket((prevTicket) => {
+        if (!prevTicket || prevTicket.id !== ticketId) return prevTicket;
+        const currentAttachments = prevTicket.attachments || [];
+        if (currentAttachments.some((a) => a.id === item.id)) return prevTicket;
+        return {
+          ...prevTicket,
+          attachments: [
+            ...currentAttachments,
+            {
+              id: item.id,
+              fileName: item.message.replace("Gửi tệp đính kèm: ", ""),
+              storagePath: item.imageUrl,
+              createdAt: item.createdAt,
+            }
+          ]
+        };
+      });
+    });
+
+    connection.on("ReceiveStatusUpdate", (update: { id: string; status: any }) => {
+      if (update.id !== ticketId) return;
+      setSelectedTicket((prevTicket) => {
+        if (!prevTicket) return prevTicket;
+        return { ...prevTicket, status: update.status as TicketStatus };
+      });
+      setTickets((prevList) =>
+        prevList.map((t) => (t.id === update.id ? { ...t, status: update.status as TicketStatus } : t))
+      );
+    });
+
+    return () => {
+      const stopConnection = async () => {
+        try {
+          if (connection.state === HubConnectionState.Connected) {
+            await connection.invoke("LeaveTicketRoom", ticketId);
+            await connection.stop();
+          }
+        } catch (err) {
+          console.error("SignalR stop error: ", err);
+        }
+      };
+      void stopConnection();
+    };
+  }, [selectedTicket?.id]);
+
   // --- Toast Helper ---
   const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = Date.now().toString();
@@ -485,9 +564,10 @@ export default function MaintenancePage() {
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
       const parsed = parseDescription(t.description);
+      const ticketCode = `REQ-${t.id.slice(0, 5).toUpperCase()}`;
       const matchesSearch =
         t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.ticketCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticketCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.issueType.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ISSUE_TYPE_REV_MAP[t.issueType]?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         parsed.description.toLowerCase().includes(searchQuery.toLowerCase());

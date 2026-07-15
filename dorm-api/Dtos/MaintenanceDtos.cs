@@ -61,6 +61,36 @@ public class MaintenanceAttachmentResponse
     public DateTime CreatedAt { get; set; }
 }
 
+public class RoomMaintenanceThreadResponse
+{
+    public Guid RoomId { get; set; }
+    public string RoomNumber { get; set; } = "";
+    public string BuildingName { get; set; } = "";
+    public string RoomStatus { get; set; } = "";
+    public List<RoomMaintenanceThreadItem> Maintenances { get; set; } = new();
+}
+
+public class RoomMaintenanceThreadItem
+{
+    public Guid Id { get; set; }
+    public Guid StudentId { get; set; }
+    public string StudentName { get; set; } = "";
+    public string IssueType { get; set; } = "";
+    public string Severity { get; set; } = "";
+    public string Status { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string? InternalNote { get; set; }
+    public string? RejectionReason { get; set; }
+    public bool RoomUnderMaintenance { get; set; }
+    public DateTime SubmittedAt { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public DateTime? ConfirmedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public List<MaintenanceHistoryResponse> History { get; set; } = new();
+    public List<MaintenanceAttachmentResponse> Attachments { get; set; } = new();
+}
+
 public class AddCommentRequest
 {
     public string Message { get; set; } = null!;

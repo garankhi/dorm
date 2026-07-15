@@ -7,10 +7,12 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using Dorm.Api.Data;
 using Dorm.Api.Dtos;
+using Dorm.Api.Hubs;
 using Dorm.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dorm.Api.Controllers;
@@ -20,16 +22,18 @@ namespace Dorm.Api.Controllers;
 public class MaintenancesController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly IHubContext<MaintenanceHub> _hubContext;
     private readonly string _supabaseUrl;
     private readonly string _supabaseKey;
     private readonly string _supabaseBucket;
 
-    public MaintenancesController(AppDbContext db, IConfiguration config)
+    public MaintenancesController(AppDbContext db, IConfiguration config, IHubContext<MaintenanceHub> hubContext)
     {
         _db = db;
         _supabaseUrl = config["Supabase:Url"] ?? "";
         _supabaseKey = config["Supabase:Key"] ?? "";
         _supabaseBucket = config["Supabase:BucketName"] ?? "maintenances";
+        _hubContext = hubContext;
     }
 
     private Guid? CurrentUserId()
@@ -40,18 +44,40 @@ public class MaintenancesController : ControllerBase
         return Guid.TryParse(sub, out var id) ? id : null;
     }
 
-    private async Task AddHistoryAsync(Guid maintenanceId, string actorRole, Guid? actorUserId, string message)
+    private async Task AddHistoryAsync(Guid maintenanceId, string actorRole, Guid? actorUserId, string message, object? payload = null)
     {
-        _db.MaintenanceHistories.Add(new MaintenanceHistory
+        var history = new MaintenanceHistory
         {
             MaintenanceId = maintenanceId,
             ActorRole = actorRole,
             ActorUserId = actorUserId,
             Message = message,
             CreatedAt = DateTime.UtcNow
+        };
+        _db.MaintenanceHistories.Add(history);
+        await _db.SaveChangesAsync();
+
+        // 1. Broadcast to ticket-specific group (for detail chat modal)
+        await _hubContext.Clients.Group(maintenanceId.ToString()).SendAsync("ReceiveHistoryItem", new
+        {
+            id = history.Id,
+            actorRole = history.ActorRole,
+            message = history.Message,
+            createdAt = history.CreatedAt
         });
 
-        await _db.SaveChangesAsync();
+        // 2. Broadcast to room-wide group (for admin's unified thread chat list)
+        var maintenance = await _db.Maintenances.AsNoTracking().FirstOrDefaultAsync(x => x.Id == maintenanceId);
+        if (maintenance != null)
+        {
+            await _hubContext.Clients.Group(maintenance.RoomId.ToString()).SendAsync("ReceiveMaintenanceUpdate", new
+            {
+                maintenanceId,
+                roomId = maintenance.RoomId,
+                message,
+                payload
+            });
+        }
     }
 
     private async Task<string> UploadToSupabaseAsync(string filePath, string mimeType, Stream fileStream)
@@ -74,6 +100,26 @@ public class MaintenancesController : ControllerBase
 
         // Return public URL
         return $"{_supabaseUrl.TrimEnd('/')}/storage/v1/object/public/{_supabaseBucket}/{filePath}";
+    }
+
+    private async Task UpdateRoomStatusForMaintenanceAsync(Guid roomId, bool roomUnderMaintenance)
+    {
+        var room = await _db.Rooms.FirstOrDefaultAsync(r => r.Id == roomId);
+        if (room is null)
+        {
+            return;
+        }
+
+        if (roomUnderMaintenance)
+        {
+            room.Status = "maintenance";
+        }
+        else if (room.Status != "inactive")
+        {
+            room.Status = room.CurrentOccupancy >= room.Capacity ? "full" : "available";
+        }
+
+        room.UpdatedAt = DateTime.UtcNow;
     }
 
     [HttpGet]
@@ -177,6 +223,69 @@ public class MaintenancesController : ControllerBase
         });
     }
 
+    [HttpGet("room/{roomId:guid}/thread")]
+    [Authorize(Policy = "RequireAdmin")]
+    public async Task<ActionResult<RoomMaintenanceThreadResponse>> RoomThread(Guid roomId)
+    {
+        var room = await _db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == roomId);
+        if (room is null) return NotFound(new { error = "room_not_found" });
+
+        var maintenances = await _db.Maintenances
+            .AsNoTracking()
+            .Include(x => x.Student)
+            .Include(x => x.History)
+            .Include(x => x.Attachments)
+            .Where(x => x.RoomId == roomId)
+            .OrderByDescending(x => x.SubmittedAt)
+            .Select(x => new RoomMaintenanceThreadItem
+            {
+                Id = x.Id,
+                StudentId = x.StudentId,
+                StudentName = x.Student.FullName,
+                IssueType = x.IssueType,
+                Severity = x.Severity,
+                Status = x.Status,
+                Description = x.Description,
+                InternalNote = x.InternalNote,
+                RejectionReason = x.RejectionReason,
+                RoomUnderMaintenance = x.RoomUnderMaintenance,
+                SubmittedAt = x.SubmittedAt,
+                ResolvedAt = x.ResolvedAt,
+                ConfirmedAt = x.ConfirmedAt,
+                CreatedAt = x.CreatedAt,
+                UpdatedAt = x.UpdatedAt,
+                History = x.History
+                    .OrderBy(h => h.CreatedAt)
+                    .Select(h => new MaintenanceHistoryResponse
+                    {
+                        Id = h.Id,
+                        ActorRole = h.ActorRole,
+                        Message = h.Message,
+                        CreatedAt = h.CreatedAt
+                    }).ToList(),
+                Attachments = x.Attachments
+                    .Select(a => new MaintenanceAttachmentResponse
+                    {
+                        Id = a.Id,
+                        FileName = a.FileName,
+                        StoragePath = a.StoragePath,
+                        MimeType = a.MimeType,
+                        UploadedByUserId = a.UploadedByUserId,
+                        CreatedAt = a.CreatedAt
+                    }).ToList()
+            })
+            .ToListAsync();
+
+        return Ok(new RoomMaintenanceThreadResponse
+        {
+            RoomId = room.Id,
+            RoomNumber = room.RoomNumber,
+            BuildingName = room.BuildingName,
+            RoomStatus = room.Status,
+            Maintenances = maintenances
+        });
+    }
+
     [HttpGet("{id:guid}")]
     [Authorize]
     public async Task<ActionResult<MaintenanceResponse>> Detail(Guid id)
@@ -270,6 +379,7 @@ public class MaintenancesController : ControllerBase
         {
             entity.RoomUnderMaintenance = request.RoomUnderMaintenance.Value;
             messages.Add("Admin cập nhật trạng thái phòng đang bảo trì");
+            await UpdateRoomStatusForMaintenanceAsync(entity.RoomId, entity.RoomUnderMaintenance);
         }
 
         if (entity.Status == "resolved") entity.ResolvedAt ??= DateTime.UtcNow;
@@ -281,6 +391,7 @@ public class MaintenancesController : ControllerBase
         if (messages.Count > 0)
         {
             await AddHistoryAsync(entity.Id, "admin", CurrentUserId(), string.Join("; ", messages));
+            await _hubContext.Clients.Group(entity.Id.ToString()).SendAsync("ReceiveStatusUpdate", new { id = entity.Id, status = entity.Status });
         }
 
         return Ok(new { success = true });
@@ -371,7 +482,27 @@ public class MaintenancesController : ControllerBase
         _db.MaintenanceAttachments.Add(attachment);
         await _db.SaveChangesAsync();
 
-        await AddHistoryAsync(id, user.Role, userId.Value, $"Đính kèm file {file.FileName}");
+        await AddHistoryAsync(
+            id,
+            user.Role,
+            userId.Value,
+            $"Đính kèm file {file.FileName}",
+            new
+            {
+                kind = "attachment",
+                fileName = attachment.FileName,
+                storagePath = attachment.StoragePath,
+                mimeType = attachment.MimeType
+            });
+
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveAttachment", new
+        {
+            id = attachment.Id,
+            actorRole = user.Role,
+            message = $"Gửi tệp đính kèm: {attachment.FileName}",
+            createdAt = attachment.CreatedAt,
+            imageUrl = attachment.StoragePath
+        });
 
         return Ok(new MaintenanceAttachmentResponse
         {
@@ -469,6 +600,7 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, "student", userId.Value, "Sinh viên hủy yêu cầu sửa chữa");
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveStatusUpdate", new { id, status = entity.Status });
 
         return Ok(new { success = true });
     }
@@ -493,9 +625,11 @@ public class MaintenancesController : ControllerBase
         entity.Status = "closed";
         entity.ConfirmedAt = DateTime.UtcNow;
         entity.UpdatedAt = DateTime.UtcNow;
+        await UpdateRoomStatusForMaintenanceAsync(entity.RoomId, false);
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, "student", userId.Value, "Sinh viên xác nhận đã sửa xong và đóng yêu cầu");
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveStatusUpdate", new { id, status = entity.Status });
 
         return Ok(new { success = true });
     }
@@ -527,6 +661,7 @@ public class MaintenancesController : ControllerBase
         await _db.SaveChangesAsync();
 
         await AddHistoryAsync(id, "student", userId.Value, $"⚠ Sinh viên báo lỗi chưa khắc phục xong. Yêu cầu sửa lại. Lý do: {request.Message.Trim()}");
+        await _hubContext.Clients.Group(id.ToString()).SendAsync("ReceiveStatusUpdate", new { id, status = entity.Status });
 
         return Ok(new { success = true });
     }

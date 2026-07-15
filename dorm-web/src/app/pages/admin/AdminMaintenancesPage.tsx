@@ -1,10 +1,14 @@
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { HubConnectionBuilder, HubConnectionState, LogLevel } from "@microsoft/signalr";
 import {
   CalendarDays,
   CheckCircle2,
+  Clock3,
   Eye,
   FileImage,
+  MessageSquare,
   Search,
+  Send,
   ShieldAlert,
   Sparkles,
   Wrench,
@@ -17,9 +21,13 @@ import {
   type AdminMaintenanceDetail,
   type MaintenanceAttachment,
   type MaintenanceHistoryItem,
+  type RoomMaintenanceThreadResponse,
+  type RoomMaintenanceThreadItem,
   fetchAdminMaintenance,
   fetchAdminMaintenanceHistory,
   fetchAdminMaintenances,
+  fetchRoomMaintenanceThread,
+  postMaintenanceComment,
   uploadMaintenanceAttachment,
   updateAdminMaintenance,
 } from "./adminMaintenancesApi";
@@ -91,6 +99,17 @@ export default function AdminMaintenancesPage() {
   const [updateSuccess, setUpdateSuccess] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [roomThread, setRoomThread] = useState<RoomMaintenanceThreadResponse | null>(null);
+  const [roomThreadLoading, setRoomThreadLoading] = useState(false);
+  const [roomThreadError, setRoomThreadError] = useState("");
+  const [roomThreadRoomId, setRoomThreadRoomId] = useState<string | null>(null);
+  const [selectedThreadMaintenanceId, setSelectedThreadMaintenanceId] = useState<string | null>(null);
+  const [threadComment, setThreadComment] = useState("");
+  const [threadCommentSending, setThreadCommentSending] = useState(false);
+  const [lastThreadRefreshAt, setLastThreadRefreshAt] = useState("");
+  const [activeSectionTab, setActiveSectionTab] = useState<"requests" | "chat">("requests");
+  const [chatRoomSearch, setChatRoomSearch] = useState("");
+  const chatViewportRef = useRef<HTMLDivElement | null>(null);
 
   const loadMaintenances = async () => {
     setLoading(true);
@@ -140,6 +159,83 @@ export default function AdminMaintenancesPage() {
     };
 
     void loadDetail();
+  }, [detailId]);
+
+  useEffect(() => {
+    if (!detailId) return;
+
+    const connection = new HubConnectionBuilder()
+      .withUrl("/hubs/maintenance")
+      .withAutomaticReconnect()
+      .build();
+
+    const startConnection = async () => {
+      try {
+        await connection.start();
+        await connection.invoke("JoinTicketRoom", detailId);
+      } catch (err) {
+        console.error("SignalR connection error (admin): ", err);
+      }
+    };
+
+    void startConnection();
+
+    connection.on("ReceiveHistoryItem", (item: any) => {
+      setHistory((prev) => {
+        if (prev.some((p) => p.id === item.id)) return prev;
+        return [...prev, item];
+      });
+    });
+
+    connection.on("ReceiveAttachment", (item: any) => {
+      setHistory((prev) => {
+        if (prev.some((p) => p.id === item.id)) return prev;
+        return [...prev, item];
+      });
+      setDetail((prevDetail) => {
+        if (!prevDetail || prevDetail.id !== detailId) return prevDetail;
+        const currentAttachments = prevDetail.attachments || [];
+        if (currentAttachments.some((a) => a.id === item.id)) return prevDetail;
+        return {
+          ...prevDetail,
+          attachments: [
+            ...currentAttachments,
+            {
+              id: item.id,
+              fileName: item.message.replace("Gửi tệp đính kèm: ", ""),
+              storagePath: item.imageUrl,
+              createdAt: item.createdAt,
+            }
+          ]
+        };
+      });
+    });
+
+    connection.on("ReceiveStatusUpdate", (update: { id: string; status: any }) => {
+      if (update.id !== detailId) return;
+      setDetail((prevDetail) => {
+        if (!prevDetail) return prevDetail;
+        return { ...prevDetail, status: update.status as MaintenanceStatus };
+      });
+      setEditStatus(update.status as MaintenanceStatus);
+      setMaintenances((prevList) =>
+        prevList.map((m) => (m.id === update.id ? { ...m, status: update.status as MaintenanceStatus } : m))
+      );
+    });
+
+    return () => {
+      const stopConnection = async () => {
+        try {
+          if (connection.state === HubConnectionState.Connected) {
+            await connection.invoke("LeaveTicketRoom", detailId);
+            await connection.stop();
+          }
+        } catch (err) {
+          console.error("SignalR stop error (admin): ", err);
+        }
+      };
+      void stopConnection();
+    };
   }, [detailId]);
 
   const buildings = useMemo(
@@ -263,6 +359,128 @@ export default function AdminMaintenancesPage() {
     }
   };
 
+  // Chat feature handlers
+  const loadRoomThread = async (roomId: string) => {
+    setRoomThreadLoading(true);
+    setRoomThreadError("");
+
+    try {
+      const data = await fetchRoomMaintenanceThread(roomId);
+      setRoomThread(data);
+      setSelectedThreadMaintenanceId((current) => {
+        if (current && data.maintenances.some((item) => item.id === current)) return current;
+        return data.maintenances[0]?.id ?? null;
+      });
+      setLastThreadRefreshAt(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
+    } catch (err: any) {
+      setRoomThreadError(err?.message || "Không thể tải hộp trao đổi phòng");
+      setRoomThread(null);
+      setSelectedThreadMaintenanceId(null);
+    } finally {
+      setRoomThreadLoading(false);
+    }
+  };
+
+  const roomThreadRooms = useMemo(() => {
+    const map = new Map<string, { roomId: string; label: string }>();
+    maintenances.forEach((item) => {
+      if (!map.has(item.roomId)) {
+        map.set(item.roomId, {
+          roomId: item.roomId,
+          label: `${item.buildingName} · ${item.roomNumber}`,
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [maintenances]);
+
+  useEffect(() => {
+    if (!roomThreadRoomId && roomThreadRooms.length > 0) {
+      setRoomThreadRoomId(roomThreadRooms[0].roomId);
+    }
+  }, [roomThreadRoomId, roomThreadRooms]);
+
+  useEffect(() => {
+    if (!roomThreadRoomId) {
+      setRoomThread(null);
+      setSelectedThreadMaintenanceId(null);
+      return;
+    }
+    void loadRoomThread(roomThreadRoomId);
+  }, [roomThreadRoomId]);
+
+  useEffect(() => {
+    if (!roomThreadRoomId) return;
+
+    const connection = new HubConnectionBuilder()
+      .withUrl("/hubs/maintenance")
+      .withAutomaticReconnect()
+      .configureLogging(LogLevel.None)
+      .build();
+
+    connection.start().catch(() => undefined);
+    connection.on("ReceiveMaintenanceUpdate", async () => {
+      await loadRoomThread(roomThreadRoomId);
+    });
+    connection.invoke("JoinRoom", roomThreadRoomId).catch(() => undefined);
+
+    return () => {
+      connection.invoke("LeaveRoom", roomThreadRoomId).catch(() => undefined);
+      connection.stop().catch(() => undefined);
+    };
+  }, [roomThreadRoomId]);
+
+  const handleThreadCommentSend = async () => {
+    if (!selectedThreadMaintenanceId || !threadComment.trim()) return;
+
+    setThreadCommentSending(true);
+    try {
+      await postMaintenanceComment(selectedThreadMaintenanceId, threadComment.trim());
+      appendThreadMessage(threadComment.trim(), "admin", new Date().toISOString());
+      setThreadComment("");
+    } catch (err: any) {
+      setRoomThreadError(err?.message || "Không thể gửi bình luận");
+    } finally {
+      setThreadCommentSending(false);
+    }
+  };
+
+  const appendThreadMessage = (message: string, actorRole: string, createdAt: string) => {
+    if (!selectedThreadMaintenanceId) return;
+
+    setRoomThread((current) => {
+      if (!current) return current;
+
+      return {
+        ...current,
+        maintenances: current.maintenances.map((item) => {
+          if (item.id !== selectedThreadMaintenanceId) return item;
+
+          return {
+            ...item,
+            history: [
+              ...item.history,
+              {
+                id: `local-${Date.now()}`,
+                actorRole,
+                message,
+                createdAt,
+              },
+            ],
+          };
+        }),
+      };
+    });
+  };
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      chatViewportRef.current?.scrollTo({ top: chatViewportRef.current.scrollHeight, behavior: "smooth" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedThreadMaintenanceId, roomThread, threadCommentSending]);
+
   return (
     <div className="mx-auto max-w-7xl p-6 md:p-8">
       <div className="mb-6">
@@ -270,8 +488,209 @@ export default function AdminMaintenancesPage() {
         <p className="mt-1 text-sm text-muted-foreground">Xem, phân loại và cập nhật tiến trình xử lý yêu cầu từ sinh viên.</p>
       </div>
 
-      <div className="mb-5 rounded-xl border border-border bg-white p-4">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
+      <div className="mb-5 flex gap-2 rounded-lg border border-border bg-muted/30 p-1">
+        <button
+          type="button"
+          onClick={() => setActiveSectionTab("requests")}
+          className={`rounded-md px-4 py-2 text-sm font-medium transition ${activeSectionTab === "requests" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Wrench size={14} className="mr-2 inline" /> Danh sách yêu cầu
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSectionTab("chat")}
+          className={`rounded-md px-4 py-2 text-sm font-medium transition ${activeSectionTab === "chat" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <MessageSquare size={14} className="mr-2 inline" /> Chat phòng
+        </button>
+      </div>
+
+      {activeSectionTab === "chat" ? (
+        <div className="mb-5 overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
+          <div className="border-b border-border p-4">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-600">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> Live
+              </span>
+              <select
+                value={roomThreadRoomId ?? ""}
+                onChange={(event) => setRoomThreadRoomId(event.target.value)}
+                className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-foreground transition focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+              >
+                {roomThreadRooms.map((room) => (
+                  <option key={room.roomId} value={room.roomId}>
+                    {room.label}
+                  </option>
+                ))}
+              </select>
+              {lastThreadRefreshAt && <span className="text-xs text-muted-foreground ml-auto flex items-center gap-1"><Clock3 size={12} /> Cập nhật lúc {lastThreadRefreshAt}</span>}
+            </div>
+          </div>
+
+          {roomThreadLoading ? (
+            <div className="p-6 text-sm text-muted-foreground">Đang tải...</div>
+          ) : roomThreadError ? (
+            <div className="p-4 text-sm text-red-600">{roomThreadError}</div>
+          ) : roomThread ? (
+            <div className="flex h-[600px] overflow-hidden">
+              {/* Left Sidebar: Request List with Search */}
+              <div className="w-[280px] border-r border-border overflow-y-auto bg-muted/20">
+                <div className="sticky top-0 bg-white border-b border-border p-3 z-10">
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={chatRoomSearch}
+                      onChange={(event) => setChatRoomSearch(event.target.value)}
+                      placeholder="Tìm kiếm..."
+                      className="w-full rounded-lg border border-border bg-white py-2 pl-8 pr-2 text-xs text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1 p-2">
+                  {roomThread.maintenances
+                    .filter((m) =>
+                      chatRoomSearch
+                        ? `${m.studentName} ${m.issueType}`.toLowerCase().includes(chatRoomSearch.toLowerCase())
+                        : true
+                    )
+                    .map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setSelectedThreadMaintenanceId(m.id)}
+                        className={`w-full text-left rounded-lg border px-3 py-2.5 text-xs transition ${
+                          selectedThreadMaintenanceId === m.id
+                            ? "border-ring bg-primary/10 text-foreground"
+                            : "border-border bg-white text-muted-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        <p className="font-medium text-foreground truncate">{m.studentName}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{m.issueType.replace(/_/g, " ")}</p>
+                      </button>
+                    ))}
+                </div>
+              </div>
+
+              {/* Center: Chat Messages */}
+              <div className="flex-1 flex flex-col">
+                {selectedThreadMaintenanceId && roomThread.maintenances.find((m) => m.id === selectedThreadMaintenanceId) ? (
+                  <>
+                    <div className="border-b border-border bg-muted/30 px-4 py-3">
+                      {(() => {
+                        const maintenance = roomThread.maintenances.find((m) => m.id === selectedThreadMaintenanceId);
+                        return maintenance ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-foreground">{maintenance.studentName}</p>
+                              <p className="text-xs text-muted-foreground">{maintenance.issueType.replace(/_/g, " ")}</p>
+                            </div>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">
+                              {roomThread.roomStatus || "Active"}
+                            </span>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+
+                    <div ref={chatViewportRef} className="flex-1 overflow-y-auto space-y-3 p-4">
+                      {(() => {
+                        const maintenance = roomThread.maintenances.find((m) => m.id === selectedThreadMaintenanceId);
+                        return maintenance?.history && maintenance.history.length > 0 ? (
+                          maintenance.history.map((item) => (
+                            <div
+                              key={item.id}
+                              className={`flex ${item.actorRole === "admin" ? "justify-start" : "justify-end"}`}
+                              style={{ animation: "fadeIn 180ms ease-out" }}
+                            >
+                              <div
+                                className={`max-w-xs rounded-2xl px-3.5 py-2.5 text-sm ${
+                                  item.actorRole === "admin"
+                                    ? "border border-border bg-white text-foreground"
+                                    : "bg-blue-500 text-white"
+                                }`}
+                              >
+                                <p className="text-xs font-medium opacity-70 mb-1">{item.actorRole === "admin" ? "Admin" : "Sinh viên"}</p>
+                                <p className="break-words">{item.message}</p>
+                                <p className="text-xs opacity-50 mt-1">{new Date(item.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-8 text-sm text-muted-foreground">Chưa có cuộc trò chuyện.</div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="border-t border-border bg-white p-3">
+                      <div className="flex items-end gap-2">
+                        <textarea
+                          value={threadComment}
+                          onChange={(event) => setThreadComment(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              void handleThreadCommentSend();
+                            }
+                          }}
+                          placeholder="Nhập tin nhắn..."
+                          rows={1}
+                          className="flex-1 resize-none rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground transition focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        />
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void handleThreadCommentSend();
+                          }}
+                          disabled={threadCommentSending || !threadComment.trim()}
+                          className="inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-primary-foreground transition disabled:opacity-50 hover:opacity-90"
+                          title="Gửi (Enter)"
+                        >
+                          <Send size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center text-muted-foreground">Chọn yêu cầu từ danh sách</div>
+                )}
+              </div>
+
+              {/* Right Sidebar: Attachments */}
+              <div className="w-[260px] border-l border-border overflow-y-auto bg-muted/20 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">Ảnh đính kèm</p>
+                {(() => {
+                  const maintenance = roomThread.maintenances.find((m) => m.id === selectedThreadMaintenanceId);
+                  return maintenance && maintenance.attachments && maintenance.attachments.length > 0 ? (
+                    <div className="grid gap-2">
+                      {maintenance.attachments.map((attachment) => (
+                        <a
+                          key={attachment.id}
+                          href={attachment.storagePath}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="overflow-hidden rounded-lg border border-border bg-white transition hover:shadow-md hover:border-ring"
+                        >
+                          <div className="aspect-square bg-muted flex items-center justify-center">
+                            <img src={attachment.storagePath} alt={attachment.fileName} className="w-full h-full object-cover" />
+                          </div>
+                          <p className="text-[11px] text-muted-foreground p-2 truncate">{attachment.fileName}</p>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Chưa có ảnh</p>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <div className="mb-5 rounded-xl border border-border bg-white p-4">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto]">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -378,6 +797,7 @@ export default function AdminMaintenancesPage() {
         </div>
       )}
 
+      {activeSectionTab === "requests" && (
       <section className="min-w-0">
         <div className="hidden overflow-hidden rounded-xl border border-border bg-white md:block">
           <div className="overflow-x-auto">
@@ -465,6 +885,9 @@ export default function AdminMaintenancesPage() {
           onPageChange={setCurrentPage}
         />
       </section>
+      )}
+        </>
+      )}
 
       {detailId && (
         <AdminModal
