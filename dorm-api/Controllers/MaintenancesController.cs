@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Dorm.Api.Hubs;
 
 namespace Dorm.Api.Controllers;
 
@@ -27,7 +26,6 @@ public class MaintenancesController : ControllerBase
     private readonly string _supabaseUrl;
     private readonly string _supabaseKey;
     private readonly string _supabaseBucket;
-    private readonly IHubContext<MaintenanceHub> _hubContext;
 
     public MaintenancesController(AppDbContext db, IConfiguration config, IHubContext<MaintenanceHub> hubContext)
     {
