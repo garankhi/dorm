@@ -418,15 +418,33 @@ export default function AdminMaintenancesPage() {
       .configureLogging(LogLevel.None)
       .build();
 
-    connection.start().catch(() => undefined);
+    const startConnection = async () => {
+      try {
+        await connection.start();
+        await connection.invoke("JoinRoom", roomThreadRoomId);
+      } catch (err) {
+        console.error("SignalR connection error (room thread): ", err);
+      }
+    };
+
+    void startConnection();
+
     connection.on("ReceiveMaintenanceUpdate", async () => {
       await loadRoomThread(roomThreadRoomId);
     });
-    connection.invoke("JoinRoom", roomThreadRoomId).catch(() => undefined);
 
     return () => {
-      connection.invoke("LeaveRoom", roomThreadRoomId).catch(() => undefined);
-      connection.stop().catch(() => undefined);
+      const stopConnection = async () => {
+        try {
+          if (connection.state === HubConnectionState.Connected) {
+            await connection.invoke("LeaveRoom", roomThreadRoomId);
+            await connection.stop();
+          }
+        } catch (err) {
+          console.error("SignalR stop error (room thread): ", err);
+        }
+      };
+      void stopConnection();
     };
   }, [roomThreadRoomId]);
 
