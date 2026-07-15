@@ -33,6 +33,7 @@ export type MaintenanceHistoryItem = {
   actorRole: string;
   message: string;
   createdAt: string;
+  imageUrl?: string;
 };
 
 export type AdminMaintenanceDetail = AdminMaintenance & {

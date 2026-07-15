@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import api from "../../api/dorm";
 import { getCurrentUser } from "../../auth";
-import { HubConnectionBuilder } from "@microsoft/signalr";
+import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
 
 // --- Interfaces ---
 interface Comment {
@@ -29,6 +29,7 @@ interface Comment {
   actorRole: "student" | "admin" | "system";
   message: string;
   createdAt: string;
+  imageUrl?: string;
 }
 
 type TicketStatus = "submitted" | "triaged" | "in_progress" | "resolved" | "closed" | "rejected" | "reopened";
@@ -331,17 +332,17 @@ export default function MaintenancePage() {
       if (update.id !== ticketId) return;
       setSelectedTicket((prevTicket) => {
         if (!prevTicket) return prevTicket;
-        return { ...prevTicket, status: update.status };
+        return { ...prevTicket, status: update.status as TicketStatus };
       });
       setTickets((prevList) =>
-        prevList.map((t) => (t.id === update.id ? { ...t, status: update.status } : t))
+        prevList.map((t) => (t.id === update.id ? { ...t, status: update.status as TicketStatus } : t))
       );
     });
 
     return () => {
       const stopConnection = async () => {
         try {
-          if (connection.state === "Connected") {
+          if (connection.state === HubConnectionState.Connected) {
             await connection.invoke("LeaveTicketRoom", ticketId);
             await connection.stop();
           }

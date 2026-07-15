@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { HubConnectionBuilder } from "@microsoft/signalr";
+import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
 import {
   CalendarDays,
   CheckCircle2,
@@ -197,18 +197,18 @@ export default function AdminMaintenancesPage() {
       if (update.id !== detailId) return;
       setDetail((prevDetail) => {
         if (!prevDetail) return prevDetail;
-        return { ...prevDetail, status: update.status };
+        return { ...prevDetail, status: update.status as MaintenanceStatus };
       });
-      setEditStatus(update.status);
+      setEditStatus(update.status as MaintenanceStatus);
       setMaintenances((prevList) =>
-        prevList.map((m) => (m.id === update.id ? { ...m, status: update.status } : m))
+        prevList.map((m) => (m.id === update.id ? { ...m, status: update.status as MaintenanceStatus } : m))
       );
     });
 
     return () => {
       const stopConnection = async () => {
         try {
-          if (connection.state === "Connected") {
+          if (connection.state === HubConnectionState.Connected) {
             await connection.invoke("LeaveTicketRoom", detailId);
             await connection.stop();
           }
