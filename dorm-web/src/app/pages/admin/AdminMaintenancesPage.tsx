@@ -360,9 +360,11 @@ export default function AdminMaintenancesPage() {
   };
 
   // Chat feature handlers
-  const loadRoomThread = async (roomId: string) => {
-    setRoomThreadLoading(true);
-    setRoomThreadError("");
+  const loadRoomThread = async (roomId: string, silent = false) => {
+    if (!silent) {
+      setRoomThreadLoading(true);
+      setRoomThreadError("");
+    }
 
     try {
       const data = await fetchRoomMaintenanceThread(roomId);
@@ -373,11 +375,15 @@ export default function AdminMaintenancesPage() {
       });
       setLastThreadRefreshAt(new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }));
     } catch (err: any) {
-      setRoomThreadError(err?.message || "Không thể tải hộp trao đổi phòng");
-      setRoomThread(null);
-      setSelectedThreadMaintenanceId(null);
+      if (!silent) {
+        setRoomThreadError(err?.message || "Không thể tải hộp trao đổi phòng");
+        setRoomThread(null);
+        setSelectedThreadMaintenanceId(null);
+      }
     } finally {
-      setRoomThreadLoading(false);
+      if (!silent) {
+        setRoomThreadLoading(false);
+      }
     }
   };
 
@@ -430,7 +436,7 @@ export default function AdminMaintenancesPage() {
     void startConnection();
 
     connection.on("ReceiveMaintenanceUpdate", async () => {
-      await loadRoomThread(roomThreadRoomId);
+      await loadRoomThread(roomThreadRoomId, true);
     });
 
     return () => {
