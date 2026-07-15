@@ -564,9 +564,10 @@ export default function MaintenancePage() {
   const filteredTickets = useMemo(() => {
     return tickets.filter((t) => {
       const parsed = parseDescription(t.description);
+      const ticketCode = `REQ-${t.id.slice(0, 5).toUpperCase()}`;
       const matchesSearch =
         t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.ticketCode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ticketCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
         t.issueType.toLowerCase().includes(searchQuery.toLowerCase()) ||
         ISSUE_TYPE_REV_MAP[t.issueType]?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         parsed.description.toLowerCase().includes(searchQuery.toLowerCase());
