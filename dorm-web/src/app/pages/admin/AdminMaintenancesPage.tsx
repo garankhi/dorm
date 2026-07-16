@@ -180,6 +180,14 @@ export default function AdminMaintenancesPage() {
 
     void startConnection();
 
+    connection.onreconnected(async () => {
+      try {
+        await connection.invoke("JoinTicketRoom", detailId);
+      } catch (err) {
+        console.error("SignalR ticket rejoin error (admin): ", err);
+      }
+    });
+
     connection.on("ReceiveHistoryItem", (item: any) => {
       setHistory((prev) => {
         if (prev.some((p) => p.id === item.id)) return prev;
@@ -434,6 +442,14 @@ export default function AdminMaintenancesPage() {
     };
 
     void startConnection();
+
+    connection.onreconnected(async () => {
+      try {
+        await connection.invoke("JoinRoom", roomThreadRoomId);
+      } catch (err) {
+        console.error("SignalR room rejoin error (admin): ", err);
+      }
+    });
 
     connection.on("ReceiveMaintenanceUpdate", async () => {
       await loadRoomThread(roomThreadRoomId, true);

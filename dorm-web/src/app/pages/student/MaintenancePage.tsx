@@ -297,6 +297,14 @@ export default function MaintenancePage() {
 
     void startConnection();
 
+    connection.onreconnected(async () => {
+      try {
+        await connection.invoke("JoinTicketRoom", ticketId);
+      } catch (err) {
+        console.error("SignalR ticket rejoin error (student): ", err);
+      }
+    });
+
     connection.on("ReceiveHistoryItem", (item: any) => {
       setSelectedTicketComments((prev) => {
         if (prev.some((p) => p.id === item.id)) return prev;
